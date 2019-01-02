@@ -51,7 +51,7 @@ while ($line = fgets($proxies)){
 
     $port++;
     $i++;
-    if($port > 65535){
+    if(!$openProxy && $port > 65535){
         break;
     }
 }
