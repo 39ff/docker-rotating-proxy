@@ -10,6 +10,7 @@
 Client <---->  Squid  <-> Delegate <-> Tor Proxy
                 :3128 <-> Delegate <-> Your HTTP/HTTPS Proxy
                       <-> Delegate <-> Public HTTP/HTTPS Socks Proxies
+                      <-> HTTP/HTTPS Proxies (Recommended for OpenProxies)
 ```
 
 
@@ -25,6 +26,8 @@ IPAddress:Port:Type(socks5 or http or https):Username:Password
 ```
 
 ### proxyList.txt example
+If you would like to add a huge of http/https proxies,please use :openproxy flag that's not use delegate.
+
 ```
 127.0.0.1:1080:socks5:yourUsername:yourPassword
 127.0.0.1:44888:http::
@@ -34,6 +37,7 @@ IPAddress:Port:Type(socks5 or http or https):Username:Password
 127.0.0.1:55519:https::
 127.0.0.1:41258:http::
 127.0.0.1:80
+127.0.0.2:openproxy
 ```
 
 ## Start docker container
@@ -42,6 +46,7 @@ docker build -t 39ff/rotate-proxy:1.0 .
 docker run -it -t -d -p127.0.0.1:3128:3128 --name testproxy 39ff/rotate-proxy:1.0
 docker exec -it testproxy /bin/bash
 ```
+
 
 ## Now try it out
 ```
@@ -63,6 +68,11 @@ sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
 }
 sh-4.2# 
 ```
+get a money as rotate proxy provider :)
+
+## WARN
+USE OF PUBLIC PROXIES WILL BE LEAK A DATA, DO NOT USE LIKE SOCIAL/SHOPPING
+
 
 
 ## Why not using Polipo?
