@@ -49,8 +49,7 @@ while ($line = fgets($proxies)){
 }
 file_put_contents(
         '/home/delegate/squid.conf',
-
-        file_get_contents("/home/delegate/acl.conf").PHP_EOL.
+        
         file_get_contents('/home/delegate/squid.conf').PHP_EOL.
         file_get_contents('/home/delegate/anonsquid.conf').PHP_EOL.
         $squid
