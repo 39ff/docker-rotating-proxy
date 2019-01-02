@@ -24,5 +24,7 @@ RUN mkdir config
 ADD delegateBase.conf ./
 ADD proxyList.txt ./
 ADD anonsquid.conf ./
+ADD Allowed_IP.txt ./
+ADD acl.conf ./
 ENTRYPOINT ["/home/delegate/start.php"]
 EXPOSE 3128
