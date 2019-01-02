@@ -4,9 +4,11 @@ $proxies = fopen('/home/delegate/proxyList.txt','r');
 
 $port = 49152;
 $squid = '';
+$i = 0;
 while ($line = fgets($proxies)){
     $line = trim($line);
     $proxyInfo = (explode(":",$line));
+    $openProxy = false;
 
     switch ($proxyInfo[2]){
         case 'socks5':
@@ -22,7 +24,9 @@ while ($line = fgets($proxies)){
             $additionalArguments.= 'CONNECT=https'.PHP_EOL;
 
             break;
-
+        case 'openproxy':
+            $openProxy = true;
+            break;
         default:
             $additionalArguments = 'SERVER=http'.PHP_EOL;
             $additionalArguments = 'PROXY='.$proxyInfo[0].':'.$proxyInfo[1].PHP_EOL;
@@ -36,13 +40,17 @@ while ($line = fgets($proxies)){
     $additionalArguments.= '-P'.$port;
 
     $filename = '/home/delegate/config/proxy_'.$port.'.conf';
-    file_put_contents($filename,file_get_contents('/home/delegate/delegateBase.conf').PHP_EOL.$additionalArguments);
 
-    shell_exec('/usr/local/bin/delegate +='.$filename);
-
-    $squid .= 'cache_peer 127.0.0.1 parent '.$port.' 0 round-robin no-query name=proxy_'.$port.PHP_EOL;
+    if(!$openProxy) {
+        file_put_contents($filename, file_get_contents('/home/delegate/delegateBase.conf') . PHP_EOL . $additionalArguments);
+        shell_exec('/usr/local/bin/delegate +=' . $filename);
+        $squid .= 'cache_peer 127.0.0.1 parent '.$port.' 0 round-robin no-query name=proxy_'.$port.PHP_EOL;
+    }else{
+        $squid .= 'cache_peer '.$proxyInfo[0].' parent '.$proxyInfo[1].' 0 round-robin no-query name=proxy_'.$i.PHP_EOL;
+    }
 
     $port++;
+    $i++;
     if($port > 65535){
         break;
     }
