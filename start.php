@@ -44,9 +44,9 @@ while ($line = fgets($proxies)){
     if(!$openProxy) {
         file_put_contents($filename, file_get_contents('/home/delegate/delegateBase.conf') . PHP_EOL . $additionalArguments);
         shell_exec('/usr/local/bin/delegate +=' . $filename);
-        $squid .= 'cache_peer 127.0.0.1 parent '.$port.' 0 round-robin no-query name=proxy_'.$port.PHP_EOL;
+        $squid .= 'cache_peer 127.0.0.1 parent '.$port.' 0 connect-fail-limit=1 connect-timeout=5 round-robin no-query name=proxy_'.$port.PHP_EOL;
     }else{
-        $squid .= 'cache_peer '.$proxyInfo[0].' parent '.$proxyInfo[1].' 0 round-robin no-query name=proxy_'.$i.PHP_EOL;
+        $squid .= 'cache_peer '.$proxyInfo[0].' parent '.$proxyInfo[1].' 0 connect-fail-limit=1 connect-timeout=8 round-robin no-query name=proxy_'.$i.PHP_EOL;
     }
 
     $port++;
