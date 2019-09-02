@@ -73,6 +73,8 @@ get a money as rotate proxy provider :)
 ## WARN
 USE OF PUBLIC PROXIES WILL BE LEAK A DATA, DO NOT USE LIKE SOCIAL/SHOPPING
 
+### FIREWALL
+You should have this one behind a firewall or limit access to it as it is setup to allow all access to it.
 
 
 ## Why not using Polipo?
