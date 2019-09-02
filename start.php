@@ -1,6 +1,6 @@
 #!/usr/bin/env php
 <?php
-$proxies = fopen('/home/delegate/proxyList.txt','r');
+$proxies = fopen('/home/delegate/proxylist/proxyList.txt','r');
 
 $port = 49152;
 $squid = '';
