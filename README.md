@@ -50,7 +50,7 @@ docker exec -it testproxy /bin/bash
 want to have your proxylist outside the docker? do this:
 ```
 docker pull confact/rotate-proxy:latest
-docker run -it -t -d -p127.0.0.1:3128:3128 -v /home/delegate/proxylist:/proxylist --name testproxy confact/rotate-proxy:latest
+docker run -it -t -d -p127.0.0.1:3128:3128 -v /proxylist:/home/delegate/proxylist --name testproxy confact/rotate-proxy:latest
 docker exec -it testproxy /bin/bash
 ```
 
