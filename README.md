@@ -26,7 +26,7 @@ IPAddress:Port:Type(socks5 or http or https):Username:Password
 ```
 
 ### proxyList.txt example
-If you would like to add a huge of http/https proxies,please use :openproxy flag that's not use delegate.
+If you would like to add a lot of http/https proxies,please use :openproxy flag that's not use delegate.
 
 ```
 127.0.0.1:1080:socks5:yourUsername:yourPassword
@@ -78,7 +78,7 @@ sh-4.2#
 get a money as rotate proxy provider :)
 
 ## WARN
-USE OF PUBLIC PROXIES WILL BE LEAK A DATA, DO NOT USE LIKE SOCIAL/SHOPPING
+USE OF PUBLIC PROXIES WILL BE LEAKING DATA, DO NOT USE FOR SOCIAL/SHOPPING
 
 ### FIREWALL
 You should have this one behind a firewall or limit access to it as it is setup to allow all access to it.
