@@ -42,8 +42,15 @@ If you would like to add a huge of http/https proxies,please use :openproxy flag
 
 ## Start docker container
 ```
-docker build -t 39ff/rotate-proxy:1.0 .
-docker run -it -t -d -p127.0.0.1:3128:3128 --name testproxy 39ff/rotate-proxy:1.0
+docker pull confact/rotate-proxy:latest
+docker run -it -t -d -p127.0.0.1:3128:3128 confact/rotate-proxy:latest
+docker exec -it testproxy /bin/bash
+```
+
+want to have your proxylist outside the docker? do this:
+```
+docker pull confact/rotate-proxy:latest
+docker run -it -t -d -p127.0.0.1:3128:3128 -v /home/delegate/proxylist:/proxylist confact/rotate-proxy:latest
 docker exec -it testproxy /bin/bash
 ```
 
