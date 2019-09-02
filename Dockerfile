@@ -22,7 +22,7 @@ RUN chown delegate:delegate ./start.php
 USER delegate
 RUN mkdir config
 ADD delegateBase.conf ./
-ADD proxyList.txt ./
+ADD proxyList.txt ./proxylist/
 ADD anonsquid.conf ./
 ADD Allowed_IP.txt ./
 ADD acl.conf ./
