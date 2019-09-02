@@ -14,7 +14,7 @@ RUN useradd delegate
 WORKDIR /home/delegate
 RUN cp /etc/squid/squid.conf /home/delegate/squid.conf
 RUN chown delegate:delegate /home/delegate/squid.conf
-RUN sed -i '1s/^/acl localnet src 127.0.0.1\/32\n/' /home/delegate/squid.conf
+RUN sed -i '1s/^/acl localnet src 0.0.0.0\/0\n/' /home/delegate/squid.conf
 ADD start.php ./
 RUN chmod +x ./start.php
 RUN chown -R delegate:delegate /var/log/squid/
