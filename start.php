@@ -13,14 +13,14 @@ while ($line = fgets($proxies)){
     switch ($proxyInfo[2]){
         case 'socks5':
             $additionalArguments = 'SERVER=https'.PHP_EOL;
-            $additionalArguments = 'SOCKS='.$proxyInfo[0].':'.$proxyInfo[1].'/-r'.PHP_EOL;
+            $additionalArguments.= 'SOCKS='.$proxyInfo[0].':'.$proxyInfo[1].'/-r'.PHP_EOL;
             $additionalArguments.= 'CONNECT=socks'.PHP_EOL;
 
             break;
 
         case 'https':
             $additionalArguments = 'SERVER=https'.PHP_EOL;
-            $additionalArguments = 'PROXY='.$proxyInfo[0].':'.$proxyInfo[1].PHP_EOL;
+            $additionalArguments.= 'PROXY='.$proxyInfo[0].':'.$proxyInfo[1].PHP_EOL;
             $additionalArguments.= 'CONNECT=https'.PHP_EOL;
 
             break;
@@ -29,7 +29,7 @@ while ($line = fgets($proxies)){
             break;
         default:
             $additionalArguments = 'SERVER=http'.PHP_EOL;
-            $additionalArguments = 'PROXY='.$proxyInfo[0].':'.$proxyInfo[1].PHP_EOL;
+            $additionalArguments.= 'PROXY='.$proxyInfo[0].':'.$proxyInfo[1].PHP_EOL;
             $additionalArguments.= 'CONNECT=proxy'.PHP_EOL;
             break;
 
