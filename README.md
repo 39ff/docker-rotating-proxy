@@ -18,7 +18,6 @@ Client <---->  Squid  <-> Delegate <-> Tor Proxy
 ### Create your proxyList.txt
 Search FreeProxy List or Paid/Subscribe ProxyService Provider.
 
-In one example : https://github.com/a2u/free-proxy-list
 
 #### Format
 ```
