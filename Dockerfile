@@ -7,7 +7,7 @@ RUN yum install squid -y
 RUN yum install epel-release -y
 RUN rpm -Uvh http://rpms.famillecollet.com/enterprise/remi-release-7.rpm
 RUN yum install --enablerepo=remi,remi-php72 php php-devel php-mbstring -y
-RUN wget "http://delegate.hpcc.jp/anonftp/DeleGate/bin/linux/latest/linux2.6-dg9_9_13.tar.gz"
+RUN wget "http://www.delegate.org/anonftp/DeleGate/bin/linux/9.9.13/linux2.6-dg9_9_13.tar.gz"
 RUN tar xf linux2.6-dg9_9_13.tar.gz
 RUN mv ./dg9_9_13/DGROOT/bin/dg9_9_13 /usr/local/bin/delegate
 RUN useradd delegate
