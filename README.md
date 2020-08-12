@@ -13,6 +13,18 @@ Client <---->  Squid  <-> HTTP/HTTPS Proxies
 
 
 ## Usage Example
+
+### Configuring IPs to allow the use of the Rotating Proxy
+If you want to use it from outside, please specify the **your** IP address to Allowed_IP.txt
+
+http://httpbin.org/ip
+
+Example:
+```
+93.184.216.34
+108.62.57.53
+```
+
 ### Create your proxyList.txt
 Search FreeProxy List or Paid/Subscribe ProxyService Provider.
 
@@ -95,20 +107,17 @@ sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
 }
 sh-4.2# 
 ```
-get a money as rotate proxy provider :)
 
 ## WARN
 USE OF PUBLIC PROXIES WILL BE LEAKING DATA, DO NOT USE FOR SOCIAL/SHOPPING
 
-### FIREWALL
-You should have this one behind a firewall or limit access to it as it is setup to allow all access to it.
 
-
-## Why not using Polipo?
+## Why not using Polipo or Privoxy?
 Because polipo can't possible to forward to upstream proxy with socks5 authorization.
 
 As is well known,VPN/Proxy Provider offered socks5 proxy with Username:Password Authorization.
 
+- Updated 2020-05 , SOCKS5 username/password support https://sourceforge.net/p/ijbswa/patches/141/
 
 ## Pull request welcome
 - Need refactoring
