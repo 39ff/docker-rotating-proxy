@@ -26,6 +26,5 @@ ADD proxyList.txt ./proxylist/
 ADD anonsquid.conf ./
 ADD Allowed_IP.txt ./proxylist/
 ADD acl.conf ./
-ADD passwd ./
 ENTRYPOINT ["/home/delegate/start.php"]
 EXPOSE 3128
