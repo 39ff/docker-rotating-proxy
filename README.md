@@ -5,12 +5,10 @@
 ```
                Docker Container
                -------------------------------------
-                      <-> Delegate <-> Socks5 Proxy
                       <-> Delegate <-> Socks5 Proxy with Authorization
-Client <---->  Squid  <-> Delegate <-> Tor Proxy
-                :3128 <-> Delegate <-> Your HTTP/HTTPS Proxy
-                      <-> Delegate <-> Public HTTP/HTTPS Socks Proxies
-                      <-> HTTP/HTTPS Proxies (Recommended for OpenProxies)
+Client <---->  Squid  <-> HTTP/HTTPS Proxies
+                      <-> Delegate <-> Socks5 Proxy
+                :3128
 ```
 
 
@@ -18,10 +16,13 @@ Client <---->  Squid  <-> Delegate <-> Tor Proxy
 ### Create your proxyList.txt
 Search FreeProxy List or Paid/Subscribe ProxyService Provider.
 
+example : https://github.com/clarketm/proxy-list
 
 #### Format
 ```
-IPAddress:Port:Type(socks5 or http or https):Username:Password
+IPAddress:Port:Type(socks5 or http):Username:Password
+IPAddress:Port:Type(socks5 or http)
+IPAddress:Port
 ```
 
 ### proxyList.txt Example1
@@ -29,14 +30,12 @@ If you would like to add a lot of http/https proxies,please use :openproxy flag 
 
 ```
 127.0.0.1:1080:socks5:yourUsername:yourPassword
-127.0.0.1:44888:http::
 127.0.0.1:44129:http:mysquidproxy:mysquidpassword
 127.0.0.1:29128:http:rotatingserviceUsername:password
 169.254.0.1:1080:socks5:paidsocksUsername:paidsocksPassword
-127.0.0.1:55519:https::
-127.0.0.1:41258:http::
 127.0.0.1:80
-127.0.0.2:openproxy
+172.31.22.222:8080
+proxy.ipredator.se:8080
 ```
 
 ## proxyList.txt Example2
