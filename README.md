@@ -24,7 +24,7 @@ Search FreeProxy List or Paid/Subscribe ProxyService Provider.
 IPAddress:Port:Type(socks5 or http or https):Username:Password
 ```
 
-### proxyList.txt example
+### proxyList.txt Example1
 If you would like to add a lot of http/https proxies,please use :openproxy flag that's not use delegate.
 
 ```
@@ -39,6 +39,19 @@ If you would like to add a lot of http/https proxies,please use :openproxy flag 
 127.0.0.2:openproxy
 ```
 
+## proxyList.txt Example2
+Here are some practical examples.
+
+using NordVPN,TorGuard,Luminati
+
+```
+89.187.161.86:80:http:yourNordVPNEmail@example.com:NordVPNPassword
+173.254.222.146:1080:socks5:yourTorGuardUsername:Password
+zproxy.lum-superproxy.io:22225:http:yourLuminatiUsername:Password
+```
+
+
+
 ## Start docker container
 ```
 docker pull confact/rotate-proxy:latest
@@ -52,6 +65,8 @@ docker pull confact/rotate-proxy:latest
 docker run -it -t -d -p127.0.0.1:3128:3128 -v /proxylist:/home/delegate/proxylist --name testproxy confact/rotate-proxy:latest
 docker exec -it testproxy /bin/bash
 ```
+
+
 
 
 ## Now try it out
