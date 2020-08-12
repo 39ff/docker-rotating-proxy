@@ -52,6 +52,13 @@ zproxy.lum-superproxy.io:22225:http:yourLuminatiUsername:Password
 
 
 ## Start docker container
+
+```
+docker build -t 39ff/rotate-proxy .
+docker run -p 3128:3128 -d 39ff/rotate-proxy
+```
+
+or 
 ```
 docker pull confact/rotate-proxy:latest
 docker run -it -t -d -p127.0.0.1:3128:3128 --name testproxy confact/rotate-proxy:latest
