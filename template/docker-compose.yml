@@ -1,0 +1,15 @@
+version: "3.3"
+services:
+  squid:
+    ports:
+      - 10020:3128
+    image: sameersbn/squid:3.5.27-2
+    volumes:
+      - ./config/squid.conf:/etc/squid/squid.conf
+      - ./config/allowed_ip.txt:/etc/squid/allowed_ip.txt
+  socks1:
+    ports:
+      - 10021:10021
+    image: chenhw2/gost:latest
+    environment:
+      ARGS: "-L=:10042 -F=socks5://vpn:unlimited@159.89.206.161:2434"

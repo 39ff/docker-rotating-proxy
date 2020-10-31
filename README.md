@@ -1,13 +1,16 @@
 # Docker Rotating Proxy
+- Fully Optimized for Web Scraping Usage.
 - HTTP/HTTPS Support
--  socks5 with Authorization Proxy to HTTP(S) proxy convert compatible
+-  socks5 with Authorization Proxy to HTTP(S) proxy convert compatible by Goast
+
+
 
 ```
                Docker Container
-               -------------------------------------
-                      <-> Delegate <-> Socks5 Proxy with Authorization
-Client <---->  Squid  <-> HTTP/HTTPS Proxies
-                      <-> Delegate <-> Socks5 Proxy
+               ----------------------------------
+Client <---->  Squid  <-> HTTP/HTTPS Proxies        --- 
+                      <-> Goast <-> Socks5 Proxy    --- Internet
+        -------------------|
                 :3128
 ```
 
@@ -62,28 +65,10 @@ zproxy.lum-superproxy.io:22225:http:yourLuminatiUsername:Password
 ```
 
 
-
 ## Start docker container
-
 ```
-docker build -t 39ff/rotate-proxy .
-docker run -p 3128:3128 -d 39ff/rotate-proxy
+chmod +x generate.sh && sh generate.sh && docker-compose up -d
 ```
-
-or 
-```
-docker pull confact/rotate-proxy:latest
-docker run -it -t -d -p127.0.0.1:3128:3128 --name testproxy confact/rotate-proxy:latest
-docker exec -it testproxy /bin/bash
-```
-
-want to have your proxylist outside the docker? do this:
-```
-docker pull confact/rotate-proxy:latest
-docker run -it -t -d -p127.0.0.1:3128:3128 -v /proxylist:/home/delegate/proxylist --name testproxy confact/rotate-proxy:latest
-docker exec -it testproxy /bin/bash
-```
-
 
 
 
@@ -107,18 +92,3 @@ sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
 }
 sh-4.2# 
 ```
-
-## WARN
-USE OF PUBLIC PROXIES WILL BE LEAKING DATA, DO NOT USE FOR SOCIAL/SHOPPING
-
-
-## Why not using Polipo or Privoxy?
-Because polipo can't possible to forward to upstream proxy with socks5 authorization.
-
-As is well known,VPN/Proxy Provider offered socks5 proxy with Username:Password Authorization.
-
-- Updated 2020-05 , SOCKS5 username/password support https://sourceforge.net/p/ijbswa/patches/141/
-
-## Pull request welcome
-- Need refactoring
-- Use HAProxy etc
