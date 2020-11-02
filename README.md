@@ -1,7 +1,7 @@
 # Docker Rotating Proxy
 - Fully Optimized for Web Scraping Usage.
 - HTTP/HTTPS Support
--  socks5 with Authorization Proxy to HTTP(S) proxy convert compatible by Goast
+-  socks5 with Authorization Proxy to HTTP(S) proxy convert compatible by [Gost](https://github.com/ginuerzh/gost)
 
 
 
