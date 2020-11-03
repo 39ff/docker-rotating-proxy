@@ -87,6 +87,7 @@ zproxy.lum-superproxy.io:22225:httpsquid:yourLuminatiUsername:Password
 
 ## Now try it out
 ```
+port 3128 is rotation port.
 sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
 {
   "origin": "209.197.26.75"
@@ -105,13 +106,22 @@ sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
 }
 sh-4.2# 
 
-and..
+and.. try static ip gateway
 
-[root@localhost ~]# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49152
+# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49152
 {
   "origin": "139.99.54.109"
 }
-[root@localhost ~]# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49153
+# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49152
+{
+  "origin": "139.99.54.109"
+}
+
+# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49153
+{
+  "origin": "159.89.206.161"
+}
+# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49153
 {
   "origin": "159.89.206.161"
 }
