@@ -50,6 +50,10 @@ Default username:password is myproxy:mypass
 
 For security reasons, it is recommended to change
 
+### 3. Generate docker-compose.yml
+```
+cd setup && composer install && php generate.php
+```
 ### How to it works?
 
 ![pattern1](https://user-images.githubusercontent.com/7544687/97987565-e08b2680-1e1e-11eb-878d-6c336977a6cf.png)
