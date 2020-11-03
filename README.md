@@ -33,7 +33,7 @@ Example:
 108.62.57.53
 ```
 
-### Create your proxyList.txt
+### 1.Create your proxyList.txt
 Search FreeProxy List or Paid/Subscribe ProxyService Provider.
 
 example : https://github.com/clarketm/proxy-list
@@ -45,9 +45,14 @@ IPAddress:Port:Type(socks5 or http)
 IPAddress:Port
 ```
 
-#### How to it works?
+### 2.Change relayusernamepassword.txt
+Default username:password is myproxy:mypass
 
-![pattern1](https://user-images.githubusercontent.com/7544687/97984729-84be9e80-1e1a-11eb-8658-63669992d3e9.png)
+For security reasons, it is recommended to change
+
+### How to it works?
+
+![pattern1](https://user-images.githubusercontent.com/7544687/97987565-e08b2680-1e1e-11eb-878d-6c336977a6cf.png)
 
 - Sometimes you may need the same IP address for a series of steps.
 To deal with this problem, we have built a new relay server via gost that uses username and password authentication.
@@ -99,4 +104,15 @@ sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
   "origin": "81.171.85.49"
 }
 sh-4.2# 
+
+and..
+
+[root@localhost ~]# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49152
+{
+  "origin": "139.99.54.109"
+}
+[root@localhost ~]# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49153
+{
+  "origin": "159.89.206.161"
+}
 ```
