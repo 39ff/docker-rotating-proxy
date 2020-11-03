@@ -6,7 +6,7 @@ use Symfony\Component\Yaml\Yaml;
 copy('../template/squid.conf','./squid.conf');
 $to = Yaml::parseFile('../template/docker-compose.yml');
 $proxies = fopen('../proxyList.txt','r');
-$firewall = trim(file_get_contents('../firewall.txt'));
+$firewall = trim(file_get_contents('../relayusernamepassword.txt'));
 
 $i = 1;
 $port = 49152;
