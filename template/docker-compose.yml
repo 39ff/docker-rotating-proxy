@@ -2,7 +2,7 @@ version: "3.3"
 services:
   squid:
     ports:
-      - 10020:3128
+      - 3128:3128
     image: sameersbn/squid:3.5.27-2
     volumes:
       - ./config/squid.conf:/etc/squid/squid.conf
