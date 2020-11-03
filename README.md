@@ -9,9 +9,9 @@
 ```
                Docker Container
                ----------------------------------
-Client <---->  Squid  <-> HTTP/HTTPS Proxies        --- 
-                      <-> Gost <-> Socks5 Proxy    --- Internet
-        -------------------|
+Client <---->  Squid  <-> HTTP/HTTPS Proxies       ---\ 
+        --------------<-> Gost <-> Socks5 Proxy    --- Internet
+        
                 :3128
 
 It can be used in two ways.
