@@ -9,10 +9,9 @@
 ```
                Docker Container
                ----------------------------------
-Client <---->  Squid  <-> HTTP/HTTPS Proxies       ---\ 
+Client <---->  Squid  <-> HTTP/HTTPS Rotate Proxies---\ 
         --------------<-> Gost <-> Socks5 Proxy    --- Internet
         
-                :3128
 
 It can be used in two ways.
 1.Automatically control the proxy and rotate each request -> use Squid
@@ -45,6 +44,16 @@ IPAddress:Port:Type(socks5 or http):Username:Password
 IPAddress:Port:Type(socks5 or http)
 IPAddress:Port
 ```
+
+#### How to it works?
+
+![pattern1](https://user-images.githubusercontent.com/7544687/97984729-84be9e80-1e1a-11eb-8658-63669992d3e9.png)
+
+- Sometimes you may need the same IP address for a series of steps.
+To deal with this problem, we have built a new relay server via gost that uses username and password authentication.
+
+- Most open proxies will be unavailable in a few days.
+Therefore, it is useless to build a server for every open proxy, so we use squid's cache_peer to rotate a large number of open proxies.
 
 ### proxyList.txt Example1
 
