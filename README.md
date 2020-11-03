@@ -47,16 +47,14 @@ IPAddress:Port
 ```
 
 ### proxyList.txt Example1
-If you would like to add a lot of http/https proxies,please use :openproxy flag that's not use delegate.
 
 ```
 127.0.0.1:1080:socks5:yourUsername:yourPassword
-127.0.0.1:44129:http:mysquidproxy:mysquidpassword
-127.0.0.1:29128:http:rotatingserviceUsername:password
+127.0.0.1:44129:httpsquid:mysquidproxy:mysquidpassword
+127.0.0.1:29128:httpsquid:rotatingserviceUsername:password
 169.254.0.1:1080:socks5:paidsocksUsername:paidsocksPassword
 127.0.0.1:80
 172.31.22.222:8080
-proxy.ipredator.se:8080
 ```
 
 ## proxyList.txt Example2
@@ -65,16 +63,11 @@ Here are some practical examples.
 using NordVPN,TorGuard,Luminati
 
 ```
-89.187.161.86:80:http:yourNordVPNEmail@example.com:NordVPNPassword
+89.187.161.86:80:httpsquid:yourNordVPNEmail@example.com:NordVPNPassword
 173.254.222.146:1080:socks5:yourTorGuardUsername:Password
-zproxy.lum-superproxy.io:22225:http:yourLuminatiUsername:Password
+zproxy.lum-superproxy.io:22225:httpsquid:yourLuminatiUsername:Password
 ```
 
-
-## Start docker container
-```
-chmod +x generate.sh && sh generate.sh && docker-compose up -d
-```
 
 
 

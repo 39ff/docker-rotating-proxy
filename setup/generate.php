@@ -25,6 +25,18 @@ while ($line = fgets($proxies)){
         $i++;
         continue;
     }
+    if(strcmp($proxyInfo[2],'httpsquid') === 0){
+
+        if (isset($proxyInfo[3]) && isset($proxyInfo[4])) {
+            //Username:Password Auth
+            file_put_contents('./squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=private%d login=%s:%s',$proxyInfo[0],$proxyInfo[1],$i,urlencode($proxyInfo[3]),urlencode($proxyInfo[4])),FILE_APPEND);
+        }else{
+            //IP Auth
+            file_put_contents('./squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=private%d',$proxyInfo[0],$proxyInfo[1],$i),FILE_APPEND);
+        }
+        $i++;
+        continue;
+    }
     //other proxy type ex:socks
     if (isset($proxyInfo[3]) && isset($proxyInfo[4])) {
         $cred = urlencode($proxyInfo[3]) . ':' . urlencode($proxyInfo[4]) . '@';
