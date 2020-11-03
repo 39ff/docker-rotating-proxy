@@ -23,7 +23,7 @@ It can be used in two ways.
 ## Usage Example
 
 ### Configuring IPs to allow the use of the Rotating Proxy
-If you want to use it from outside, please specify the **your** IP address to Allowed_IP.txt
+If you want to use it from outside, please specify the **your** IP address to allowed_ip.txt
 
 http://httpbin.org/ip
 
