@@ -51,7 +51,7 @@ while ($line = fgets($proxies)){
             'ARGS' => sprintf('-L=%s:%d -F=%s://%s%s:%d',$firewall, $port, $proxyInfo[2], $cred, $proxyInfo[0], $proxyInfo[1])
         ]
     ];
-    file_put_contents('./squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=gost%d','127.0.0.1',$port,$i),FILE_APPEND);
+    file_put_contents('./squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=gost%d login=%s%s','127.0.0.1',$port,$i,strstr($firewall, ':',true),strstr(strstr($firewall, ':'),'@',true)),FILE_APPEND);
 
     $i++;
     $port++;
