@@ -13,6 +13,11 @@ Client <---->  Squid  <-> HTTP/HTTPS Proxies        ---
                       <-> Gost <-> Socks5 Proxy    --- Internet
         -------------------|
                 :3128
+
+It can be used in two ways.
+1.Automatically control the proxy and rotate each request -> use Squid
+2.Control the proxy programmatically　-> use Gost Port
+
 ```
 
 
