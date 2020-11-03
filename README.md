@@ -45,21 +45,16 @@ IPAddress:Port:Type(socks5 or http)
 IPAddress:Port
 ```
 
-### 2.Change relayusernamepassword.txt
-Default username:password is myproxy:mypass
 
-For security reasons, it is recommended to change
-
-### 3. Generate docker-compose.yml
+### 2. Generate docker-compose.yml
 ```
 cd setup && composer install && php generate.php
 ```
 ### How to it works?
-
-![pattern1](https://user-images.githubusercontent.com/7544687/97987565-e08b2680-1e1e-11eb-878d-6c336977a6cf.png)
+![pattern1](https://user-images.githubusercontent.com/7544687/97991581-fdc2f380-1e24-11eb-99f3-df9885d627a2.png)
 
 - Sometimes you may need the same IP address for a series of steps.
-To deal with this problem, we have built a new relay server via gost that uses username and password authentication.
+To deal with this problem, we have built a new relay server via gost.
 
 - Most open proxies will be unavailable in a few days.
 Therefore, it is useless to build a server for every open proxy, so we use squid's cache_peer to rotate a large number of open proxies.
@@ -112,20 +107,20 @@ sh-4.2#
 
 and.. try static ip gateway
 
-# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49152
+# curl httpbin.org/ip --proxy http://127.0.0.1:49152
 {
   "origin": "139.99.54.109"
 }
-# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49152
+# curl httpbin.org/ip --proxy http://127.0.0.1:49152
 {
   "origin": "139.99.54.109"
 }
 
-# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49153
+# curl httpbin.org/ip --proxy http://127.0.0.1:49153
 {
   "origin": "159.89.206.161"
 }
-# curl httpbin.org/ip --proxy http://myproxy:mypass@127.0.0.1:49153
+# curl httpbin.org/ip --proxy http://127.0.0.1:49153
 {
   "origin": "159.89.206.161"
 }

@@ -6,7 +6,6 @@ use Symfony\Component\Yaml\Yaml;
 copy(__DIR__.'/../template/squid.conf',__DIR__.'/squid.conf');
 $to = Yaml::parseFile(__DIR__.'/../template/docker-compose.yml');
 $proxies = fopen(__DIR__.'/../proxyList.txt','r');
-$firewall = trim(file_get_contents(__DIR__.'/../relayusernamepassword.txt'));
 
 $i = 1;
 $port = 49152;
@@ -48,10 +47,10 @@ while ($line = fgets($proxies)){
         ],
         'image' => 'chenhw2/gost:latest',
         'environment' => [
-            'ARGS' => sprintf('-L=%s:%d -F=%s://%s%s:%d',$firewall, $port, $proxyInfo[2], $cred, $proxyInfo[0], $proxyInfo[1])
+            'ARGS' => sprintf('-L=:%d -F=%s://%s%s:%d', $port, $proxyInfo[2], $cred, $proxyInfo[0], $proxyInfo[1])
         ]
     ];
-    file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=gost%d login=%s%s','127.0.0.1',$port,$i,strstr($firewall, ':',true),strstr(strstr($firewall, ':'),'@',true)),FILE_APPEND);
+    file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=gost%d','127.0.0.1',$port,$i),FILE_APPEND);
 
     $i++;
     $port++;
