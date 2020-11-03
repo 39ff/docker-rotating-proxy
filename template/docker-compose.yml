@@ -17,4 +17,4 @@ services:
       - 10022:10022
     image: chenhw2/gost:latest
     environment:
-      ARGS: "-L=:10042 -F=socks5://vpn:unlimited@159.89.206.161:2434"
+      ARGS: "-L=:10022 -F=socks5://vpn:unlimited@159.89.206.161:2434"
