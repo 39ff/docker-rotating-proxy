@@ -3,7 +3,7 @@
 require __DIR__.'/vendor/autoload.php';
 use Symfony\Component\Yaml\Yaml;
 
-copy(__DIR__.'/../template/squid.conf','./squid.conf');
+copy(__DIR__.'/../template/squid.conf',__DIR__.'/squid.conf');
 $to = Yaml::parseFile(__DIR__.'/../template/docker-compose.yml');
 $proxies = fopen(__DIR__.'/../proxyList.txt','r');
 $firewall = trim(file_get_contents(__DIR__.'/../relayusernamepassword.txt'));
