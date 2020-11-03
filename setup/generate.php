@@ -46,9 +46,10 @@ while ($line = fgets($proxies)){
             $port . ':' . $port
         ],
         'image' => 'ginuerzh/gost:latest',
+        'container_name'=>'dockergost_'.$i,
         'command' => sprintf('-L=:%d -F=%s://%s%s:%d', $port, $proxyInfo[2], $cred, $proxyInfo[0], $proxyInfo[1])
     ];
-    file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=gost%d','127.0.0.1',$port,$i),FILE_APPEND);
+    file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=gost%d','dockergost_'.$i,$port,$i),FILE_APPEND);
 
     $i++;
     $port++;
