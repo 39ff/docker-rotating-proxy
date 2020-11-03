@@ -45,10 +45,8 @@ while ($line = fgets($proxies)){
         'ports' => [
             $port . ':' . $port
         ],
-        'image' => 'chenhw2/gost:latest',
-        'environment' => [
-            'ARGS' => sprintf('-L=:%d -F=%s://%s%s:%d', $port, $proxyInfo[2], $cred, $proxyInfo[0], $proxyInfo[1])
-        ]
+        'image' => 'ginuerzh/gost:latest',
+        'command' => sprintf('-L=:%d -F=%s://%s%s:%d', $port, $proxyInfo[2], $cred, $proxyInfo[0], $proxyInfo[1])
     ];
     file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=gost%d','127.0.0.1',$port,$i),FILE_APPEND);
 
@@ -56,6 +54,6 @@ while ($line = fgets($proxies)){
     $port++;
 }
 
-file_put_contents(__DIR__.'/../docker-compose.yml', Yaml::dump($to));
+file_put_contents(__DIR__.'/../docker-compose.yml', Yaml::dump($to,4,4));
 rename(__DIR__.'/squid.conf',__DIR__.'/../config/squid.conf');
 copy(__DIR__.'/../template/allowed_ip.txt',__DIR__.'/../config/allowed_ip.txt');
