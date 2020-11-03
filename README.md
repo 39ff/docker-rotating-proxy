@@ -1,4 +1,4 @@
-# Docker Rotating Proxy
+# Docker Rotating Proxy Config Generator
 
 - Fully Optimized for Web Scraping Usage.
 - HTTP/HTTPS Support
