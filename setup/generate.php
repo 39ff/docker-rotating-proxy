@@ -21,7 +21,7 @@ while ($line = fgets($proxies)){
         //open proxy server IP:Port Pattern.
         //No create gost
         //only add squid config
-        file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=public%d',$proxyInfo[0],$proxyInfo[1],$i),FILE_APPEND);
+        file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=public%d',$proxyInfo[0],$proxyInfo[1],$i),FILE_APPEND);
         $i++;
         continue;
     }
@@ -29,10 +29,10 @@ while ($line = fgets($proxies)){
 
         if (isset($proxyInfo[3]) && isset($proxyInfo[4])) {
             //Username:Password Auth
-            file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=private%d login=%s:%s',$proxyInfo[0],$proxyInfo[1],$i,urlencode($proxyInfo[3]),urlencode($proxyInfo[4])),FILE_APPEND);
+            file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=private%d login=%s:%s',$proxyInfo[0],$proxyInfo[1],$i,urlencode($proxyInfo[3]),urlencode($proxyInfo[4])),FILE_APPEND);
         }else{
             //IP Auth
-            file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=private%d',$proxyInfo[0],$proxyInfo[1],$i),FILE_APPEND);
+            file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=private%d',$proxyInfo[0],$proxyInfo[1],$i),FILE_APPEND);
         }
         $i++;
         continue;
@@ -49,7 +49,7 @@ while ($line = fgets($proxies)){
         'container_name'=>'dockergost_'.$i,
         'command' => sprintf('-L=:%d -F=%s://%s%s:%d', $port, $proxyInfo[2], $cred, $proxyInfo[0], $proxyInfo[1])
     ];
-    file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=10 connect-timeout=8 round-robin no-query allow-miss proxy-only name=gost%d','dockergost_'.$i,$port,$i),FILE_APPEND);
+    file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=gost%d','dockergost_'.$i,$port,$i),FILE_APPEND);
 
     $i++;
     $port++;
