@@ -126,3 +126,6 @@ and.. try static ip gateway
   "origin": "159.89.206.161"
 }
 ```
+
+## TODO
+- setup/* need dockerization!! pull request welcome
