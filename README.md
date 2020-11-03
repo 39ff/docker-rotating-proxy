@@ -40,8 +40,8 @@ example : https://github.com/clarketm/proxy-list
 
 #### Format
 ```
-IPAddress:Port:Type(socks5 or http or https):Username:Password
-IPAddress:Port:Type(socks5 or http or https)
+IPAddress:Port:Type(socks5 or http or https or httpsquid):Username:Password
+IPAddress:Port:Type(socks5 or http or https or httpsquid)
 IPAddress:Port
 ```
 
