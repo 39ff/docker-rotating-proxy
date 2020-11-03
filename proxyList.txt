@@ -1,5 +1,3 @@
-127.0.0.1:1080:socks5:yourUsername:yourPassword
-127.0.0.1:44888:http::
-127.0.0.1:55519:https::
-127.0.0.1:41258:http::
-127.0.0.1:80
+159.89.206.161:2434:socks5:vpn:unlimited
+142.93.68.63:2434:socks5:vpn:unlimited
+82.196.7.200:2434:socks5:vpn:unlimited

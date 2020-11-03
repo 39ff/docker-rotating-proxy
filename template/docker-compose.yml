@@ -1,0 +1,20 @@
+version: "3.3"
+services:
+  squid:
+    ports:
+      - 3128:3128
+    image: sameersbn/squid:3.5.27-2
+    volumes:
+      - ./config/squid.conf:/etc/squid/squid.conf
+      - ./config/allowed_ip.txt:/etc/squid/allowed_ip.txt
+    container_name: dockersquid_rotate
+  hola1:
+    ports:
+      - 10021:8080
+    image: yarmak/hola-proxy:latest
+    command: "-country us -proxy-type peer"
+  socks1:
+    ports:
+      - 10022:10022
+    image: ginuerzh/gost:latest
+    command: "-L=:10022 -F=socks5://vpn:unlimited@159.89.206.161:2434"
