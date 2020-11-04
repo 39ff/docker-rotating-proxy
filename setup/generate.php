@@ -80,7 +80,7 @@ if(file_exists(__DIR__.'/../openvpn')){
                 'OPENVPN_CONFIG=/vpn/vpn.ovpn'
             ]
         ];
-        file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=vpn%d','dockervpn_'.$i,$port,$i),FILE_APPEND);
+        file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=vpn%d','dockervpn_'.$i,'3128',$i),FILE_APPEND);
 
         $i++;
         $port++;
