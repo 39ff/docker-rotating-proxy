@@ -2,8 +2,9 @@
 
 - Fully Optimized for Web Scraping Usage.
 - HTTP/HTTPS Support
--  socks5 with Authorization Proxy to HTTP(S) proxy convert compatible by [Gost](https://github.com/ginuerzh/gost)
-
+- socks5 with Authorization Proxy to HTTP(S) proxy convert compatible by [Gost](https://github.com/ginuerzh/gost)
+- You can use a VPN as an HTTP proxy.
+- Making it IP address based authentication makes it easier to use in your program.(selenium,puppeteer etc)
 
 
 ```
@@ -202,3 +203,4 @@ and.. try static ip gateway
 
 ## TODO
 - setup/* need dockerization!! pull request welcome
+
