@@ -10,7 +10,11 @@
                Docker Container
                ----------------------------------
 Client <---->  Squid  <-> HTTP/HTTPS Rotate Proxies---\ 
-        --------------<-> Gost <-> Socks5 Proxy    --- Internet
+                       |
+        ---------------|-> Gost <-> Socks5 Proxy    --- Internet
+                       |
+        --------------<-> VPN to HTTP Proxy <--------/
+                     
         
 
 It can be used in two ways.
@@ -33,7 +37,7 @@ Example:
 108.62.57.53
 ```
 
-### 1.Create your proxyList.txt
+### 1. Create your proxyList.txt(If HTTP/Socks is provided)
 Search FreeProxy List or Paid/Subscribe ProxyService Provider.
 
 example : https://github.com/clarketm/proxy-list
@@ -45,6 +49,8 @@ IPAddress:Port:Type(socks5 or http or https or httpsquid)
 IPAddress:Port
 ```
 
+### 1.1 Create Your OpenVPN Config(If HTTP/Socks is NOT provided)
+see [example](openvpn/)
 
 ### 2. Generate docker-compose.yml
 ```
@@ -83,6 +89,74 @@ zproxy.lum-superproxy.io:22225:httpsquid:yourLuminatiUsername:Password
 
 
 
+## Generated docker-compose.yml example
+```
+version: '3.3'
+services:
+    squid:
+        ports:
+            - '3128:3128'
+        image: 'sameersbn/squid:3.5.27-2'
+        volumes:
+            - './config/squid.conf:/etc/squid/squid.conf'
+            - './config/allowed_ip.txt:/etc/squid/allowed_ip.txt'
+        container_name: dockersquid_rotate
+    hola1:
+        ports:
+            - '10021:8080'
+        image: 'yarmak/hola-proxy:latest'
+        command: '-country us -proxy-type peer'
+    socks1:
+        ports:
+            - '10022:10022'
+        image: 'ginuerzh/gost:latest'
+        command: '-L=:10022 -F=socks5://vpn:unlimited@159.89.206.161:2434'
+    proxy1:
+        ports:
+            - '49152:49152'
+        image: 'ginuerzh/gost:latest'
+        container_name: dockergost_1
+        command: '-L=:49152 -F=socks5://vpn:unlimited@159.89.206.161:2434'
+    proxy2:
+        ports:
+            - '49153:49153'
+        image: 'ginuerzh/gost:latest'
+        container_name: dockergost_2
+        command: '-L=:49153 -F=socks5://vpn:unlimited@142.93.68.63:2434'
+    proxy3:
+        ports:
+            - '49154:49154'
+        image: 'ginuerzh/gost:latest'
+        container_name: dockergost_3
+        command: '-L=:49154 -F=socks5://vpn:unlimited@82.196.7.200:2434'
+    vpn4:
+        ports:
+            - '49155:3128'
+        image: curve25519xsalsa20poly1305/openvpn
+        container_name: dockervpn_4
+        devices:
+            - '/dev/net/tun:/dev/net/tun'
+        cap_add:
+            - NET_ADMIN
+        volumes:
+            - './openvpn/hk-hkg.prod.surfshark.comsurfshark_openvpn_tcp.ovpn:/vpn:ro'
+        environment:
+            - OPENVPN_CONFIG=/vpn/vpn.ovpn
+    vpn5:
+        ports:
+            - '49156:3128'
+        image: curve25519xsalsa20poly1305/openvpn
+        container_name: dockervpn_5
+        devices:
+            - '/dev/net/tun:/dev/net/tun'
+        cap_add:
+            - NET_ADMIN
+        volumes:
+            - './openvpn/jp454.nordvpn.com.tcp443.ovpn:/vpn:ro'
+        environment:
+            - OPENVPN_CONFIG=/vpn/vpn.ovpn
+
+```
 
 ## Now try it out
 ```
