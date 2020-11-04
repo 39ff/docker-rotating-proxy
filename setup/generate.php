@@ -54,6 +54,37 @@ while ($line = fgets($proxies)){
     $i++;
     $port++;
 }
+//openvpn support
+if(file_exists(__DIR__.'/../openvpn')){
+    foreach(glob(__DIR__.'/../openvpn/*') as $fileOrDir){
+        if(!is_dir($fileOrDir)){
+            continue;
+        }
+
+        $to['services']['vpn' . $i] = [
+            'ports' => [
+                $port . ':' . '3128',
+            ],
+            'image' => 'curve25519xsalsa20poly1305/openvpn',
+            'container_name'=>'dockervpnproxy_'.$i,
+            'devices'=>[
+                '/dev/net/tun:/dev/net/tun'
+            ],
+            'cap_add'=>[
+                'NET_ADMIN'
+            ],
+            'volumes'=>[
+                './openvpn/'.basename($fileOrDir).':/vpn:ro'
+            ],
+            'environment'=>[
+                'OPENVPN_CONFIG=/vpn/vpn.ovpn'
+            ]
+        ];
+        $i++;
+        $port++;
+
+    }
+}
 
 file_put_contents(__DIR__.'/../docker-compose.yml', Yaml::dump($to,4,4));
 rename(__DIR__.'/squid.conf',__DIR__.'/../config/squid.conf');
