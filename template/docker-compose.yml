@@ -3,7 +3,7 @@ services:
   squid:
     ports:
       - 3128:3128
-    image: sameersbn/squid:3.5.27-2
+    image: b4tman/squid:latest
     volumes:
       - ./config/squid.conf:/etc/squid/squid.conf
       - ./config/allowed_ip.txt:/etc/squid/allowed_ip.txt
