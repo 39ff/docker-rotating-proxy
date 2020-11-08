@@ -31,12 +31,12 @@ while ($line = fgets($proxies)){
         $squid_conf[] = sprintf($squid_default, $proxyInfo['host'], $proxyInfo['port'], 'private'.$i);
         if ($proxyInfo['user'] && $proxyInfo['pass']) {
             //Username:Password Auth
-            $squid_conf[] = sprintf('login=%s:%s', urlencode($proxyInfo['user']), urlencode($proxyInfo['pass']));
+            $squid_conf[] = vsprintf('login=%s:%s', array_map('urlencode', [$proxyInfo['user'], $proxyInfo['pass']]));
         }
     }else{
         //other proxy type ex:socks
         if ($proxyInfo['user'] && $proxyInfo['pass']) {
-            $cred = urlencode($proxyInfo['user']) . ':' . urlencode($proxyInfo['pass']) . '@';
+            $cred = vsprintf('%s:%s@', array_map('urlencode', [$proxyInfo['user'], $proxyInfo['pass']]));
         }
         $to['services']['proxy' . $i] = [
             'ports' => [
@@ -63,7 +63,7 @@ if(file_exists(__DIR__.'/../openvpn')){
 
         $to['services']['vpn' . $i] = [
             'ports' => [
-                $port . ':' . '3128',
+                $port . ':3128',
             ],
             'image' => 'curve25519xsalsa20poly1305/openvpn',
             'container_name'=>'dockervpn_'.$i,
