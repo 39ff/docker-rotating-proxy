@@ -9,50 +9,50 @@ $proxies = fopen(__DIR__.'/../proxyList.txt','r');
 
 $i = 1;
 $port = 49152;
+$keys = ['host', 'port', 'scheme', 'user', 'pass'];
+$squid_default = 'cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=%s';
 
 while ($line = fgets($proxies)){
     $line = trim($line);
-    $proxyInfo = (explode(":",$line));
+    $proxyInfo = array_combine($keys, array_pad((explode(":", $line, 5)), 5, ''));
+    $squid_conf = [];
     $cred = '';
-    if(!isset($proxyInfo[0]) && !isset($proxyInfo[1])){
+    if(!$proxyInfo['host'] && !$proxyInfo['port']){
         continue;
     }
-    if(!isset($proxyInfo[2])){
+
+    if(!$proxyInfo['scheme']){
         //open proxy server IP:Port Pattern.
         //No create gost
         //only add squid config
-        file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=public%d',$proxyInfo[0],$proxyInfo[1],$i),FILE_APPEND);
-        $i++;
-        continue;
+        $squid_conf[] = sprintf($squid_default, $proxyInfo['host'], $proxyInfo['port'], 'public'.$i);
     }
-    if(strcmp($proxyInfo[2],'httpsquid') === 0){
-
-        if (isset($proxyInfo[3]) && isset($proxyInfo[4])) {
+    elseif(strcmp($proxyInfo['scheme'], 'httpsquid') === 0){
+        $squid_conf[] = sprintf($squid_default, $proxyInfo['host'], $proxyInfo['port'], 'private'.$i);
+        if ($proxyInfo['user'] && $proxyInfo['pass']) {
             //Username:Password Auth
-            file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=private%d login=%s:%s',$proxyInfo[0],$proxyInfo[1],$i,urlencode($proxyInfo[3]),urlencode($proxyInfo[4])),FILE_APPEND);
-        }else{
-            //IP Auth
-            file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=private%d',$proxyInfo[0],$proxyInfo[1],$i),FILE_APPEND);
+            $squid_conf[] = vsprintf('login=%s:%s', array_map('urlencode', [$proxyInfo['user'], $proxyInfo['pass']]));
         }
-        $i++;
-        continue;
+    }else{
+        //other proxy type ex:socks
+        if ($proxyInfo['user'] && $proxyInfo['pass']) {
+            $cred = vsprintf('%s:%s@', array_map('urlencode', [$proxyInfo['user'], $proxyInfo['pass']]));
+        }
+        $to['services']['proxy' . $i] = [
+            'ports' => [
+                $port . ':' . $port
+            ],
+            'image' => 'ginuerzh/gost:latest',
+            'container_name'=>'dockergost_'.$i,
+            'command' => sprintf('-L=:%d -F=%s://%s%s:%d', $port, $proxyInfo['scheme'], $cred, $proxyInfo['host'], $proxyInfo['port'])
+        ];
+        $squid_conf[] = sprintf($squid_default, 'dockergost_'.$i, $port, 'gost'.$i);
+        $port++;
     }
-    //other proxy type ex:socks
-    if (isset($proxyInfo[3]) && isset($proxyInfo[4])) {
-        $cred = urlencode($proxyInfo[3]) . ':' . urlencode($proxyInfo[4]) . '@';
+    if($squid_conf){
+        file_put_contents(__DIR__.'/squid.conf', PHP_EOL . implode(' ', $squid_conf), FILE_APPEND);
     }
-    $to['services']['proxy' . $i] = [
-        'ports' => [
-            $port . ':' . $port
-        ],
-        'image' => 'ginuerzh/gost:latest',
-        'container_name'=>'dockergost_'.$i,
-        'command' => sprintf('-L=:%d -F=%s://%s%s:%d', $port, $proxyInfo[2], $cred, $proxyInfo[0], $proxyInfo[1])
-    ];
-    file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=gost%d','dockergost_'.$i,$port,$i),FILE_APPEND);
-
     $i++;
-    $port++;
 }
 //openvpn support
 if(file_exists(__DIR__.'/../openvpn')){
@@ -63,7 +63,7 @@ if(file_exists(__DIR__.'/../openvpn')){
 
         $to['services']['vpn' . $i] = [
             'ports' => [
-                $port . ':' . '3128',
+                $port . ':3128',
             ],
             'image' => 'curve25519xsalsa20poly1305/openvpn',
             'container_name'=>'dockervpn_'.$i,
@@ -80,7 +80,7 @@ if(file_exists(__DIR__.'/../openvpn')){
                 'OPENVPN_CONFIG=/vpn/vpn.ovpn'
             ]
         ];
-        file_put_contents(__DIR__.'/squid.conf',PHP_EOL.sprintf('cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=vpn%d','dockervpn_'.$i,'3128',$i),FILE_APPEND);
+        file_put_contents(__DIR__.'/squid.conf', PHP_EOL . sprintf($squid_default, 'dockervpn_'.$i, '3128', 'vpn'.$i), FILE_APPEND);
 
         $i++;
         $port++;
