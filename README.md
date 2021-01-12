@@ -55,7 +55,13 @@ see [example](openvpn/)
 
 ### 2. Generate docker-compose.yml
 ```
-cd setup && composer install && php generate.php
+cd setup
+docker run --rm -it -v "$(pwd):/app" composer install
+cd ..
+docker run --rm -it -v "$(pwd):/app/" php:7.4-cli php /app/setup/generate.php
+cat docker-compose.yml
+docker-compose up -d
+curl https://httpbin.org/ip --proxy http://127.0.0.1:3128
 ```
 ### How to it works?
 ![pattern1](https://user-images.githubusercontent.com/7544687/97991581-fdc2f380-1e24-11eb-99f3-df9885d627a2.png)
@@ -202,5 +208,4 @@ and.. try static ip gateway
 ```
 
 ## TODO
-- setup/* need dockerization!! pull request welcome
-
+- [ ] Username/Password Auth for Enterprise
