@@ -211,11 +211,11 @@ and.. try static ip gateway
 }
 ```
 
-## How to update the proxy list
+## Example of using a large number of public proxies with real-time updates
+see [public_proxy_cron.sh](public_proxy_cron.sh)
 ```
-docker kill --signal=SIGHUP dockersquid_rotate
+0 * * * * /your_sh_path_here/public_proxy_cron.sh
 ```
-
 
 ## TODO
 - [ ] Username/Password Auth for Enterprise
