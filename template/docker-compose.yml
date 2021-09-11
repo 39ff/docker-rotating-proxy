@@ -5,9 +5,10 @@ services:
       - 3128:3128
     image: b4tman/squid:latest
     volumes:
-      - ./config/squid.conf:/etc/squid/squid.conf
-      - ./config/allowed_ip.txt:/etc/squid/allowed_ip.txt
+      - './config:/etc/squid/conf.d:ro'
     container_name: dockersquid_rotate
+    environment:
+      - 'SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf'
   hola1:
     ports:
       - 10021:8080

@@ -55,14 +55,18 @@ see [example](openvpn/)
 
 ### 2. Generate docker-compose.yml
 ```
-cd setup
+git clone https://github.com/39ff/docker-rotating-proxy
+cd docker-rotating-proxy && cd setup
 docker run --rm -it -v "$(pwd):/app" composer install
 cd ..
+# If you don't want to set up OpenVPN, please remove it.
+rm -rf ./openvpn/*
 docker run --rm -it -v "$(pwd):/app/" php:7.4-cli php /app/setup/generate.php
 cat docker-compose.yml
 docker-compose up -d
 curl https://httpbin.org/ip --proxy http://127.0.0.1:3128
 ```
+
 ### How to it works?
 ![pattern1](https://user-images.githubusercontent.com/7544687/97991581-fdc2f380-1e24-11eb-99f3-df9885d627a2.png)
 
@@ -103,11 +107,12 @@ services:
     squid:
         ports:
             - '3128:3128'
-        image: 'sameersbn/squid:3.5.27-2'
+        image: 'b4tman/squid:latest'
         volumes:
-            - './config/squid.conf:/etc/squid/squid.conf'
-            - './config/allowed_ip.txt:/etc/squid/allowed_ip.txt'
+            - './config:/etc/squid/conf.d:ro'
         container_name: dockersquid_rotate
+        environment:
+          - 'SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf'
     hola1:
         ports:
             - '10021:8080'
@@ -162,7 +167,6 @@ services:
             - './openvpn/jp454.nordvpn.com.tcp443.ovpn:/vpn:ro'
         environment:
             - OPENVPN_CONFIG=/vpn/vpn.ovpn
-
 ```
 
 ## Now try it out
@@ -205,6 +209,12 @@ and.. try static ip gateway
 {
   "origin": "159.89.206.161"
 }
+```
+
+## Example of using a large number of public proxies with real-time updates
+see [public_proxy_cron.sh](public_proxy_cron.sh)
+```
+0 * * * * /your_sh_path_here/public_proxy_cron.sh
 ```
 
 ## TODO
