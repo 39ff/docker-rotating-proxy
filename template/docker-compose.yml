@@ -1,21 +1,26 @@
 version: "3.3"
 services:
+  php:
+    image: squidphp
+    build: ./squidphp
+    volumes:
+      - ./:/app/
   squid:
     ports:
       - 3128:3128
-    image: b4tman/squid:latest
+    image: squidmysql
+    build: ./squidmysql
     volumes:
       - './config:/etc/squid/conf.d:ro'
     container_name: dockersquid_rotate
     environment:
       - 'SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf'
-  hola1:
+  db:
     ports:
-      - 10021:8080
-    image: yarmak/hola-proxy:latest
-    command: "-country us -proxy-type peer"
-  socks1:
-    ports:
-      - 10022:10022
-    image: ginuerzh/gost:latest
-    command: "-L=:10022 -F=socks5://vpn:unlimited@159.89.206.161:2434"
+      - 127.0.0.1:13306:3306
+    image: mariadb:10.5
+    volumes:
+      - ./db_data:/var/lib/mysql
+    container_name: mydb_1
+    environment:
+      MYSQL_ROOT_PASSWORD: mysquidmanageruserpass
