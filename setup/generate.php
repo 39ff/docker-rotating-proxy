@@ -8,7 +8,9 @@ $to = Yaml::parseFile(__DIR__.'/../template/docker-compose.yml');
 $proxies = fopen(__DIR__.'/../proxyList.txt','r');
 
 $i = 1;
-$port = 49152;
+$port = 30000;
+$port_shadow_socks = 50000;
+
 $keys = ['host', 'port', 'scheme', 'user', 'pass'];
 $squid_default = 'cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=%s';
 
@@ -40,7 +42,7 @@ while ($line = fgets($proxies)){
         }
         $to['services']['proxy' . $i] = [
             'ports' => [
-                $port . ':' . $port
+                $port . ':' . $port,
             ],
             'image' => 'ginuerzh/gost:latest',
             'container_name'=>'dockergost_'.$i,
@@ -61,11 +63,39 @@ if(file_exists(__DIR__.'/../openvpn')){
             continue;
         }
 
+        $config_ovpn = glob(__DIR__.'/../openvpn/'.basename($fileOrDir).'/*.ovpn');
+        if(empty($config_ovpn[0])){
+            throw new \RuntimeException("OpenVPN Configuration File Not Found:".$fileOrDir);
+        }
+        $config_secret = glob(__DIR__.'/../openvpn/'.basename($fileOrDir).'/secret');
+
+        $config_ovpn = realpath($config_ovpn[0]);
+        $credentials = null;
+
+        $env = [
+            'VPN_SERVICE_PROVIDER=custom',
+            'VPN_TYPE=openvpn',
+            'OPENVPN_CUSTOM_CONFIG=/gluetun/'.basename($config_ovpn),
+            'HTTPPROXY=on',
+            'HTTPPROXY_USER=',
+            'HTTPPROXY_PASSWORD=',
+            'HTTPPROXY_STEALTH=on',
+        ];
+
+        if(!empty($config_secret[0])) {
+            $credentials = file($config_secret[0],FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES);
+            $env = array_merge($env,[
+                'OPENVPN_USER='.$credentials[0],
+                'OPENVPN_PASSWORD='.$credentials[1],
+            ]);
+        }
+
         $to['services']['vpn' . $i] = [
             'ports' => [
-                $port . ':3128',
+                $port              . ':8888/tcp',
+                $port_shadow_socks . ':8388',
             ],
-            'image' => 'curve25519xsalsa20poly1305/openvpn',
+            'image' => 'qmcgaw/gluetun',
             'container_name'=>'dockervpn_'.$i,
             'devices'=>[
                 '/dev/net/tun:/dev/net/tun'
@@ -74,16 +104,15 @@ if(file_exists(__DIR__.'/../openvpn')){
                 'NET_ADMIN'
             ],
             'volumes'=>[
-                './openvpn/'.basename($fileOrDir).':/vpn:ro'
+                './openvpn/'.basename($fileOrDir).':/gluetun'
             ],
-            'environment'=>[
-                'OPENVPN_CONFIG=/vpn/vpn.ovpn'
-            ]
+            'environment'=>$env
         ];
-        file_put_contents(__DIR__.'/squid.conf', PHP_EOL . sprintf($squid_default, 'dockervpn_'.$i, '3128', 'vpn'.$i), FILE_APPEND);
+        file_put_contents(__DIR__.'/squid.conf', PHP_EOL . sprintf($squid_default, 'dockervpn_'.$i, $port, 'vpn'.$i), FILE_APPEND);
 
         $i++;
         $port++;
+        $port_shadow_socks++;
 
     }
 }
