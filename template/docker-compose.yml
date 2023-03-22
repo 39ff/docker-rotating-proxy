@@ -3,19 +3,11 @@ services:
   squid:
     ports:
       - 3128:3128
-    image: b4tman/squid:latest
+    image: b4tman/squid:5.3
     volumes:
       - './config:/etc/squid/conf.d:ro'
     container_name: dockersquid_rotate
     environment:
       - 'SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf'
-  hola1:
-    ports:
-      - 10021:8080
-    image: yarmak/hola-proxy:latest
-    command: "-country us -proxy-type peer"
-  socks1:
-    ports:
-      - 10022:10022
-    image: ginuerzh/gost:latest
-    command: "-L=:10022 -F=socks5://vpn:unlimited@159.89.206.161:2434"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
