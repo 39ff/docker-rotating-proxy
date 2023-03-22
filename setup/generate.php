@@ -108,7 +108,7 @@ if(file_exists(__DIR__.'/../openvpn')){
             ],
             'environment'=>$env
         ];
-        file_put_contents(__DIR__.'/squid.conf', PHP_EOL . sprintf($squid_default, 'dockervpn_'.$i, $port, 'vpn'.$i), FILE_APPEND);
+        file_put_contents(__DIR__.'/squid.conf', PHP_EOL . sprintf($squid_default, 'host.docker.internal', $port, 'vpn'.$i), FILE_APPEND);
 
         $i++;
         $port++;
