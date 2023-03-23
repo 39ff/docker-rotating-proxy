@@ -12,7 +12,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: [ "CMD-SHELL", "export https_proxy=127.0.0.1:3128 && export http_proxy=127.0.0.1:3128 && wget -q -Y on  -O - https://checkip.amazonaws.com || exit 1" ]
+      test: [ "CMD-SHELL", "export https_proxy=127.0.0.1:3128 && export http_proxy=127.0.0.1:3128 && wget -q -Y on  -O - http://checkip.amazonaws.com || exit 1" ]
       retries: 5
       timeout: "10s"
       start_period: "60s"
