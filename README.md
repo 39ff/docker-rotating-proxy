@@ -53,6 +53,13 @@ IPAddress:Port
 ### 1.1 Create Your OpenVPN Config(If HTTP/Socks is NOT provided)
 see [example](openvpn/)
 
+### Format
+```
+openvpn/{name}
+openvpn/{name}/{name2}.ovpn
+openvpn/{name}/secret
+```
+
 ### 2. Generate docker-compose.yml
 ```
 git clone https://github.com/39ff/docker-rotating-proxy
@@ -107,66 +114,64 @@ services:
     squid:
         ports:
             - '3128:3128'
-        image: 'b4tman/squid:latest'
+        image: 'b4tman/squid:5.3.0'
         volumes:
             - './config:/etc/squid/conf.d:ro'
         container_name: dockersquid_rotate
         environment:
-          - 'SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf'
-    hola1:
-        ports:
-            - '10021:8080'
-        image: 'yarmak/hola-proxy:latest'
-        command: '-country us -proxy-type peer'
-    socks1:
-        ports:
-            - '10022:10022'
-        image: 'ginuerzh/gost:latest'
-        command: '-L=:10022 -F=socks5://vpn:unlimited@159.89.206.161:2434'
+            - SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
     proxy1:
         ports:
-            - '49152:49152'
+            - '30000:30000'
         image: 'ginuerzh/gost:latest'
         container_name: dockergost_1
-        command: '-L=:49152 -F=socks5://vpn:unlimited@159.89.206.161:2434'
-    proxy2:
+        command: '-L=:30000 -F=socks5://vpn:unlimited@159.89.206.161:2434'
+    vpn3:
         ports:
-            - '49153:49153'
-        image: 'ginuerzh/gost:latest'
-        container_name: dockergost_2
-        command: '-L=:49153 -F=socks5://vpn:unlimited@142.93.68.63:2434'
-    proxy3:
-        ports:
-            - '49154:49154'
-        image: 'ginuerzh/gost:latest'
-        container_name: dockergost_3
-        command: '-L=:49154 -F=socks5://vpn:unlimited@82.196.7.200:2434'
+            - '127.0.0.1:30001:8888/tcp'
+            - '127.0.0.1:50000:8388'
+        image: qmcgaw/gluetun
+        container_name: dockervpn_3
+        devices:
+            - '/dev/net/tun:/dev/net/tun'
+        cap_add:
+            - NET_ADMIN
+        volumes:
+            - './openvpn/hk-hkg.prod.surfshark.comsurfshark_openvpn_tcp.ovpn:/gluetun'
+        environment:
+            - VPN_SERVICE_PROVIDER=custom
+            - VPN_TYPE=openvpn
+            - OPENVPN_CUSTOM_CONFIG=/gluetun/vpn.ovpn
+            - HTTPPROXY=on
+            - HTTPPROXY_USER=
+            - HTTPPROXY_PASSWORD=
+            - HTTPPROXY_STEALTH=on
+            - OPENVPN_USER=xxxx
+            - OPENVPN_PASSWORD=yyyy
     vpn4:
         ports:
-            - '49155:3128'
-        image: curve25519xsalsa20poly1305/openvpn
+            - '30002:8888/tcp'
+            - '50001:8388'
+        image: qmcgaw/gluetun
         container_name: dockervpn_4
         devices:
             - '/dev/net/tun:/dev/net/tun'
         cap_add:
             - NET_ADMIN
         volumes:
-            - './openvpn/hk-hkg.prod.surfshark.comsurfshark_openvpn_tcp.ovpn:/vpn:ro'
+            - './openvpn/jp454.nordvpn.com.tcp443.ovpn:/gluetun'
         environment:
-            - OPENVPN_CONFIG=/vpn/vpn.ovpn
-    vpn5:
-        ports:
-            - '49156:3128'
-        image: curve25519xsalsa20poly1305/openvpn
-        container_name: dockervpn_5
-        devices:
-            - '/dev/net/tun:/dev/net/tun'
-        cap_add:
-            - NET_ADMIN
-        volumes:
-            - './openvpn/jp454.nordvpn.com.tcp443.ovpn:/vpn:ro'
-        environment:
-            - OPENVPN_CONFIG=/vpn/vpn.ovpn
+            - VPN_SERVICE_PROVIDER=custom
+            - VPN_TYPE=openvpn
+            - OPENVPN_CUSTOM_CONFIG=/gluetun/vpn.ovpn
+            - HTTPPROXY=on
+            - HTTPPROXY_USER=
+            - HTTPPROXY_PASSWORD=
+            - HTTPPROXY_STEALTH=on
+            - OPENVPN_USER=xxxx
+            - OPENVPN_PASSWORD=yyyy
 ```
 
 ## Now try it out
@@ -210,6 +215,12 @@ and.. try static ip gateway
   "origin": "159.89.206.161"
 }
 ```
+
+
+## Warning
+By default, ports can be used without authentication.
+Some VPSs that are directly exposed globally may require appropriate modifications to the docker-compose.
+
 
 ## Example of using a large number of public proxies with real-time updates
 see [public_proxy_cron.sh](public_proxy_cron.sh)

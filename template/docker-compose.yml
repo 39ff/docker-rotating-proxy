@@ -1,21 +1,23 @@
-version: "3.3"
+version: "3.4"
 services:
   squid:
     ports:
       - 3128:3128
-    image: b4tman/squid:latest
+    image: b4tman/squid:5.8
     volumes:
       - './config:/etc/squid/conf.d:ro'
     container_name: dockersquid_rotate
     environment:
       - 'SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf'
-  hola1:
-    ports:
-      - 10021:8080
-    image: yarmak/hola-proxy:latest
-    command: "-country us -proxy-type peer"
-  socks1:
-    ports:
-      - 10022:10022
-    image: ginuerzh/gost:latest
-    command: "-L=:10022 -F=socks5://vpn:unlimited@159.89.206.161:2434"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: [ "CMD-SHELL", "export https_proxy=127.0.0.1:3128 && export http_proxy=127.0.0.1:3128 && wget -q -Y on  -O - http://httpbin.org/ip || exit 1" ]
+      retries: 5
+      timeout: "10s"
+      start_period: "60s"
+      interval: "300s"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
