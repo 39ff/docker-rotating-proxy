@@ -13,6 +13,13 @@ $port_shadow_socks = 50000;
 
 $keys = ['host', 'port', 'scheme', 'user', 'pass'];
 $squid_default = 'cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=%s';
+$image = 'b4tman/squid';
+$tag = '5.3.0';
+
+if(isArm64()){
+    $tag = '5.3.0-armhf';
+}
+$to['services']['squid']['image'] = sprintf('%s:%s',$image,$tag);
 
 while ($line = fgets($proxies)){
     $line = trim($line);
@@ -67,11 +74,26 @@ if(file_exists(__DIR__.'/../openvpn')){
         if(empty($config_ovpn[0])){
             throw new \RuntimeException("OpenVPN Configuration File Not Found:".$fileOrDir);
         }
+
         $config_secret = glob(__DIR__.'/../openvpn/'.basename($fileOrDir).'/secret');
-
         $config_ovpn = realpath($config_ovpn[0]);
-        $credentials = null;
 
+        //If a hostname is present in the Config, convert it to an IP address. (To prevent IP address leaks)
+        $config_lists = file($config_ovpn,FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES);
+        foreach($config_lists as $key=>$config_list){
+            if(preg_match("/^remote\s+([\w.-]+)(?:\s+(\d+))?$/",$config_list,$matches)){
+                $remote = 'remote '.gethostbyname($matches[1]);
+                if(isset($matches[2])){
+                    $remote.= ' '.$matches[2];
+                }
+                $config_lists[$key] = $remote;
+
+                file_put_contents($config_ovpn,implode(PHP_EOL,$config_lists));
+                break;
+            }
+        }
+
+        $credentials = null;
         $env = [
             'VPN_SERVICE_PROVIDER=custom',
             'VPN_TYPE=openvpn',
@@ -117,6 +139,18 @@ if(file_exists(__DIR__.'/../openvpn')){
     }
 }
 
+
 file_put_contents(__DIR__.'/../docker-compose.yml', Yaml::dump($to,4,4));
 rename(__DIR__.'/squid.conf',__DIR__.'/../config/squid.conf');
 copy(__DIR__.'/../template/allowed_ip.txt',__DIR__.'/../config/allowed_ip.txt');
+
+
+function isArm64() {
+    $architecture = php_uname('m');
+
+    if ($architecture === 'aarch64' || $architecture === 'arm64') {
+        return true;
+    }
+
+    return false;
+}
