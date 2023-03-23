@@ -14,13 +14,6 @@ $gluetun_http_port = 8888;
 
 $keys = ['host', 'port', 'scheme', 'user', 'pass'];
 $squid_default = 'cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=%s';
-$image = 'b4tman/squid';
-$tag = '5.3.0';
-
-if(isArm64()){
-    $tag = '5.3.0-armhf';
-}
-$to['services']['squid']['image'] = sprintf('%s:%s',$image,$tag);
 
 while ($line = fgets($proxies)){
     $line = trim($line);
