@@ -1,9 +1,9 @@
 # Docker Rotating Proxy Config Generator
 
 - Fully Optimized for Web Scraping Usage.
-- HTTP/HTTPS Support
+- HTTP/HTTPS Support (see wiki)
 - socks5 with Authorization Proxy to HTTP(S) proxy convert compatible by [Gost](https://github.com/ginuerzh/gost)
-- You can use a VPN as an HTTP proxy.
+- You can use a VPN as an HTTP proxy.(powered by [gluetun](https://github.com/qdm12/gluetun) )
 - Making it IP address based authentication makes it easier to use in your program.(selenium,puppeteer etc)
 
 
@@ -109,12 +109,12 @@ zproxy.lum-superproxy.io:22225:httpsquid:yourLuminatiUsername:Password
 
 ## Generated docker-compose.yml example
 ```
-version: '3.3'
+version: '3.4'
 services:
     squid:
         ports:
             - '3128:3128'
-        image: 'b4tman/squid:5.3.0'
+        image: 'b4tman/squid:5.8'
         volumes:
             - './config:/etc/squid/conf.d:ro'
         container_name: dockersquid_rotate
@@ -122,18 +122,24 @@ services:
             - SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf
         extra_hosts:
             - 'host.docker.internal:host-gateway'
+        healthcheck:
+            test: [CMD-SHELL, 'export https_proxy=127.0.0.1:3128 && export http_proxy=127.0.0.1:3128 && wget -q -Y on  -O - https://checkip.amazonaws.com || exit 1']
+            retries: 5
+            timeout: 10s
+            start_period: 10s
+            interval: 300s
     proxy1:
         ports:
             - '30000:30000'
         image: 'ginuerzh/gost:latest'
         container_name: dockergost_1
-        command: '-L=:30000 -F=socks5://vpn:unlimited@159.89.206.161:2434'
-    vpn3:
+        command: '-L=:30000 -F=socks5://vpn:unlimited@82.196.7.200:2434'
+    vpn2:
         ports:
-            - '127.0.0.1:30001:8888/tcp'
-            - '127.0.0.1:50000:8388'
+            - '30001:8888/tcp'
+            - '50000:8388'
         image: qmcgaw/gluetun
-        container_name: dockervpn_3
+        container_name: dockervpn_2
         devices:
             - '/dev/net/tun:/dev/net/tun'
         cap_add:
@@ -148,14 +154,14 @@ services:
             - HTTPPROXY_USER=
             - HTTPPROXY_PASSWORD=
             - HTTPPROXY_STEALTH=on
-            - OPENVPN_USER=xxxx
-            - OPENVPN_PASSWORD=yyyy
-    vpn4:
+            - OPENVPN_USER=xxxxx
+            - OPENVPN_PASSWORD=yyyyy
+    vpn3:
         ports:
             - '30002:8888/tcp'
             - '50001:8388'
         image: qmcgaw/gluetun
-        container_name: dockervpn_4
+        container_name: dockervpn_3
         devices:
             - '/dev/net/tun:/dev/net/tun'
         cap_add:
@@ -170,24 +176,26 @@ services:
             - HTTPPROXY_USER=
             - HTTPPROXY_PASSWORD=
             - HTTPPROXY_STEALTH=on
-            - OPENVPN_USER=xxxx
-            - OPENVPN_PASSWORD=yyyy
+            - OPENVPN_USER=xxxxx
+            - OPENVPN_PASSWORD=yyyyy
 ```
 
 ## Now try it out
 ```
 port 3128 is rotation port.
+Recommended for one-time requests that do not require browser rendering, such as curl
+
 sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
 {
-  "origin": "209.197.26.75"
+  "origin": "82.196.7.200"
 }
 sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
 {
-  "origin": "185.155.98.168"
+  "origin": "89.187.161.56"
 }
 sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
 {
-  "origin": "173.245.217.48"
+  "origin": "84.17.37.159"
 }
 sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
 {
@@ -196,23 +204,24 @@ sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
 sh-4.2# 
 
 and.. try static ip gateway
+Recommended in selenium, puppeteer and playwright
 
-# curl httpbin.org/ip --proxy http://127.0.0.1:49152
+# curl httpbin.org/ip --proxy http://127.0.0.1:30000
 {
-  "origin": "139.99.54.109"
+  "origin": "82.196.7.200"
 }
-# curl httpbin.org/ip --proxy http://127.0.0.1:49152
+# curl httpbin.org/ip --proxy http://127.0.0.1:30000
 {
-  "origin": "139.99.54.109"
+  "origin": "82.196.7.200"
 }
 
-# curl httpbin.org/ip --proxy http://127.0.0.1:49153
+# curl httpbin.org/ip --proxy http://127.0.0.1:30001
 {
-  "origin": "159.89.206.161"
+  "origin": "84.17.37.159"
 }
-# curl httpbin.org/ip --proxy http://127.0.0.1:49153
+# curl httpbin.org/ip --proxy http://127.0.0.1:30001
 {
-  "origin": "159.89.206.161"
+  "origin": "84.17.37.159"
 }
 ```
 
