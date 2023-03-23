@@ -4,7 +4,6 @@ services:
     ports:
       - 3128:3128
     image: b4tman/squid:5.8
-    platform: linux/arm/v7
     volumes:
       - './config:/etc/squid/conf.d:ro'
     container_name: dockersquid_rotate
