@@ -10,6 +10,7 @@ $proxies = fopen(__DIR__.'/../proxyList.txt','r');
 $i = 1;
 $port = 30000;
 $port_shadow_socks = 50000;
+$gluetun_http_port = 8888;
 
 $keys = ['host', 'port', 'scheme', 'user', 'pass'];
 $squid_default = 'cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=%s';
@@ -114,7 +115,7 @@ if(file_exists(__DIR__.'/../openvpn')){
 
         $to['services']['vpn' . $i] = [
             'ports' => [
-                $port              . ':8888/tcp',
+                $port              . ':'.$gluetun_http_port.'/tcp',
                 $port_shadow_socks . ':8388',
             ],
             'image' => 'qmcgaw/gluetun',
@@ -130,7 +131,7 @@ if(file_exists(__DIR__.'/../openvpn')){
             ],
             'environment'=>$env
         ];
-        file_put_contents(__DIR__.'/squid.conf', PHP_EOL . sprintf($squid_default, 'host.docker.internal', $port, 'vpn'.$i), FILE_APPEND);
+        file_put_contents(__DIR__.'/squid.conf', PHP_EOL . sprintf($squid_default, 'dockervpn_'.$i, $gluetun_http_port, 'vpn'.$i), FILE_APPEND);
 
         $i++;
         $port++;

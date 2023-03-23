@@ -1,4 +1,4 @@
-version: "3.3"
+version: "3.4"
 services:
   squid:
     ports:
@@ -11,3 +11,9 @@ services:
       - 'SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf'
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: [ "CMD-SHELL", "export https_proxy=127.0.0.1:3128 && export http_proxy=127.0.0.1:3128 && wget -q -Y on  -O - https://checkip.amazonaws.com || exit 1" ]
+      retries: 5
+      timeout: "10s"
+      start_period: "10s"
+      interval: "300s"
