@@ -17,3 +17,7 @@ services:
       timeout: "10s"
       start_period: "10s"
       interval: "300s"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
