@@ -211,6 +211,12 @@ and.. try static ip gateway
 }
 ```
 
+
+## Warning
+By default, ports can be used without authentication.
+Some VPSs that are directly exposed globally may require appropriate modifications to the docker-compose.
+
+
 ## Example of using a large number of public proxies with real-time updates
 see [public_proxy_cron.sh](public_proxy_cron.sh)
 ```
