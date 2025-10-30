@@ -1,3 +1,5 @@
-159.89.206.161:2434:socks5:vpn:unlimited
-142.93.68.63:2434:socks5:vpn:unlimited
-82.196.7.200:2434:socks5:vpn:unlimited
+# Proxy list - you can customize the format below
+# format: host,port,scheme,user,pass
+159.89.206.161,2434,socks5,vpn,unlimited
+142.93.68.63,2434,socks5,vpn,unlimited
+82.196.7.200,2434,socks5,vpn,unlimited

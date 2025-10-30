@@ -1,0 +1,16 @@
+# Generated files
+docker-compose.yml
+config/squid.conf
+config/allowed_ip.txt
+
+# Composer dependencies
+setup/vendor/
+setup/composer.phar
+
+# User configuration
+setup/config.php
+setup/squid.conf
+
+# Temporary files
+*.log
+*.tmp

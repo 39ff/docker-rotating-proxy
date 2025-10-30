@@ -1,241 +1,332 @@
-# Docker Rotating Proxy Config Generator
+# Docker Rotating Proxy
 
-- Fully Optimized for Web Scraping Usage.
-- HTTP/HTTPS Support (see wiki)
-- socks5 with Authorization Proxy to HTTP(S) proxy convert compatible by [Gost](https://github.com/ginuerzh/gost)
-- You can use a VPN as an HTTP proxy.(powered by [gluetun](https://github.com/qdm12/gluetun) )
-- Making it IP address based authentication makes it easier to use in your program.(selenium,puppeteer etc)
+A flexible rotating proxy system powered by Docker, Squid, and Gost. Automatically rotates through multiple proxy sources for web scraping and privacy.
 
+## Features
 
-```
-               Docker Container
-               ----------------------------------
-Client <---->  Squid  <-> HTTP/HTTPS Rotate Proxies---\ 
-                       |
-        ---------------|-> Gost <-> Socks5 Proxy    --- Internet
-                       |
-        --------------<-> VPN to HTTP Proxy <--------/
-                     
-        
+- **Multiple Proxy Types**: HTTP, HTTPS, SOCKS5, and OpenVPN
+- **Flexible Format**: Customize proxy list column order and delimiters
+- **Auto Rotation**: Squid automatically rotates proxies per request
+- **Static IPs**: Direct port access for session persistence
+- **Easy Configuration**: Simple text file configuration
+- **Docker-based**: Portable and easy to deploy
 
-It can be used in two ways.
-1.Automatically control the proxy and rotate each request -> use Squid
-2.Control the proxy programmatically　-> use Gost Port
+## Quick Start
 
+### 1. Clone Repository
+
+```bash
+git clone https://github.com/39ff/docker-rotating-proxy
+cd docker-rotating-proxy
 ```
 
+### 2. Install Dependencies
 
-## Usage Example
+```bash
+cd setup
+docker run --rm -it -v "$(pwd):/app" composer install
+cd ..
+```
 
-### Configuring IPs to allow the use of the Rotating Proxy
-If you want to use it from outside, please specify the **your** IP address to allowed_ip.txt
+### 3. Configure Proxies
 
-http://httpbin.org/ip
+Edit `proxyList.txt` with your proxies. The format is flexible:
 
-Example:
+**Example 1: Default format (colon-separated)**
+```
+# format: host:port:scheme:user:pass
+proxy1.example.com:1080:socks5:username:password
+proxy2.example.com:8080:http:user:pass
+192.168.1.100:3128
+```
+
+**Example 2: Custom format (comma-separated)**
+```
+# format: host,port,scheme,user,pass
+159.89.206.161,2434,socks5,vpn,unlimited
+142.93.68.63,2434,socks5,vpn,unlimited
+```
+
+**Example 3: Custom order (scheme first)**
+```
+# format: scheme|host|port|user|pass
+socks5|proxy.example.com|1080|myuser|mypass
+```
+
+**Supported formats:**
+- `host:port` - Simple HTTP proxy
+- `host:port:scheme` - Proxy with protocol
+- `host:port:scheme:user:pass` - With authentication
+- Delimiters: `:` (colon), `,` (comma), `|` (pipe), tab, or space
+
+**Supported schemes:**
+- `socks5` - Creates Gost bridge container
+- `http` / `https` - Creates Gost bridge container
+- `httpsquid` - Direct squid integration (no container)
+- *(empty)* - Direct HTTP proxy (no container)
+
+### 4. Configure Allowed IPs
+
+Edit `template/allowed_ip.txt` to whitelist client IPs:
+
 ```
 93.184.216.34
 108.62.57.53
 ```
 
-### 1. Create your proxyList.txt(If HTTP/Socks is provided)
-Search FreeProxy List or Paid/Subscribe ProxyService Provider.
+Get your IP: http://httpbin.org/ip
 
-example : https://github.com/clarketm/proxy-list
+### 5. Generate Configuration
 
-#### Format
-```
-IPAddress:Port:Type(socks5 or http or https or httpsquid):Username:Password
-IPAddress:Port:Type(socks5 or http or https or httpsquid)
-IPAddress:Port
-```
-
-### 1.1 Create Your OpenVPN Config(If HTTP/Socks is NOT provided)
-see [example](openvpn/)
-
-### Format
-```
-openvpn/{name}
-openvpn/{name}/{name2}.ovpn
-openvpn/{name}/secret
-```
-
-### 2. Generate docker-compose.yml
-```
-git clone https://github.com/39ff/docker-rotating-proxy
-cd docker-rotating-proxy && cd setup
-docker run --rm -it -v "$(pwd):/app" composer install
-cd ..
-# If you don't want to set up OpenVPN, please remove it.
+```bash
+# Remove OpenVPN examples if not needed
 rm -rf ./openvpn/*
-docker run --rm -it -v "$(pwd):/app/" php:7.4-cli php /app/setup/generate.php
-cat docker-compose.yml
+
+# Generate docker-compose.yml
+docker run --rm -it -v "$(pwd):/app/" php:8.2-cli php /app/setup/generate.php
+```
+
+### 6. Start Services
+
+```bash
 docker-compose up -d
-curl https://httpbin.org/ip --proxy http://127.0.0.1:3128
 ```
 
-### How to it works?
-![pattern1](https://user-images.githubusercontent.com/7544687/97991581-fdc2f380-1e24-11eb-99f3-df9885d627a2.png)
+### 7. Test
 
-- Sometimes you may need the same IP address for a series of steps.
-To deal with this problem, we have built a new relay server via gost.
+```bash
+# Rotating proxy (port 3128)
+curl http://httpbin.org/ip --proxy http://127.0.0.1:3128
 
-- Most open proxies will be unavailable in a few days.
-Therefore, it is useless to build a server for every open proxy, so we use squid's cache_peer to rotate a large number of open proxies.
-
-### proxyList.txt Example1
-
-```
-127.0.0.1:1080:socks5:yourUsername:yourPassword
-127.0.0.1:44129:httpsquid:mysquidproxy:mysquidpassword
-127.0.0.1:29128:httpsquid:rotatingserviceUsername:password
-169.254.0.1:1080:socks5:paidsocksUsername:paidsocksPassword
-127.0.0.1:80
-172.31.22.222:8080
+# Static proxy (port 30000+)
+curl http://httpbin.org/ip --proxy http://127.0.0.1:30000
 ```
 
-## proxyList.txt Example2
-Here are some practical examples.
+## Usage Modes
 
-using NordVPN,TorGuard,Luminati
+### Mode 1: Rotating Proxy (Port 3128)
 
-```
-89.187.161.86:80:httpsquid:yourNordVPNEmail@example.com:NordVPNPassword
-173.254.222.146:1080:socks5:yourTorGuardUsername:Password
-zproxy.lum-superproxy.io:22225:httpsquid:yourLuminatiUsername:Password
-```
+Squid automatically rotates through all configured proxies. Each request uses a different IP.
 
+```bash
+curl http://httpbin.org/ip --proxy http://127.0.0.1:3128
+# {"origin": "82.196.7.200"}
 
-
-## Generated docker-compose.yml example
-```
-version: '3.4'
-services:
-    squid:
-        ports:
-            - '3128:3128'
-        image: 'b4tman/squid:5.8'
-        volumes:
-            - './config:/etc/squid/conf.d:ro'
-        container_name: dockersquid_rotate
-        environment:
-            - SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf
-        extra_hosts:
-            - 'host.docker.internal:host-gateway'
-        healthcheck:
-            test: [CMD-SHELL, 'export https_proxy=127.0.0.1:3128 && export http_proxy=127.0.0.1:3128 && wget -q -Y on  -O - https://checkip.amazonaws.com || exit 1']
-            retries: 5
-            timeout: 10s
-            start_period: 10s
-            interval: 300s
-    proxy1:
-        ports:
-            - '30000:30000'
-        image: 'ginuerzh/gost:latest'
-        container_name: dockergost_1
-        command: '-L=:30000 -F=socks5://vpn:unlimited@82.196.7.200:2434'
-    vpn2:
-        ports:
-            - '30001:8888/tcp'
-            - '50000:8388'
-        image: qmcgaw/gluetun
-        container_name: dockervpn_2
-        devices:
-            - '/dev/net/tun:/dev/net/tun'
-        cap_add:
-            - NET_ADMIN
-        volumes:
-            - './openvpn/hk-hkg.prod.surfshark.comsurfshark_openvpn_tcp.ovpn:/gluetun'
-        environment:
-            - VPN_SERVICE_PROVIDER=custom
-            - VPN_TYPE=openvpn
-            - OPENVPN_CUSTOM_CONFIG=/gluetun/vpn.ovpn
-            - HTTPPROXY=on
-            - HTTPPROXY_USER=
-            - HTTPPROXY_PASSWORD=
-            - HTTPPROXY_STEALTH=on
-            - OPENVPN_USER=xxxxx
-            - OPENVPN_PASSWORD=yyyyy
-    vpn3:
-        ports:
-            - '30002:8888/tcp'
-            - '50001:8388'
-        image: qmcgaw/gluetun
-        container_name: dockervpn_3
-        devices:
-            - '/dev/net/tun:/dev/net/tun'
-        cap_add:
-            - NET_ADMIN
-        volumes:
-            - './openvpn/jp454.nordvpn.com.tcp443.ovpn:/gluetun'
-        environment:
-            - VPN_SERVICE_PROVIDER=custom
-            - VPN_TYPE=openvpn
-            - OPENVPN_CUSTOM_CONFIG=/gluetun/vpn.ovpn
-            - HTTPPROXY=on
-            - HTTPPROXY_USER=
-            - HTTPPROXY_PASSWORD=
-            - HTTPPROXY_STEALTH=on
-            - OPENVPN_USER=xxxxx
-            - OPENVPN_PASSWORD=yyyyy
+curl http://httpbin.org/ip --proxy http://127.0.0.1:3128
+# {"origin": "89.187.161.56"}
 ```
 
-## Now try it out
-```
-port 3128 is rotation port.
-Recommended for one-time requests that do not require browser rendering, such as curl
+**Best for**:
+- One-time requests
+- High-volume scraping
+- Load distribution
 
-sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
-{
-  "origin": "82.196.7.200"
-}
-sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
-{
-  "origin": "89.187.161.56"
-}
-sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
-{
-  "origin": "84.17.37.159"
-}
-sh-4.2# curl https://httpbin.org/ip --proxy https://127.0.0.1:3128
-{
-  "origin": "81.171.85.49"
-}
-sh-4.2# 
+### Mode 2: Static Proxy (Ports 30000+)
 
-and.. try static ip gateway
-Recommended in selenium, puppeteer and playwright
+Direct connection to individual proxy containers. Same IP for all requests to that port.
 
-# curl httpbin.org/ip --proxy http://127.0.0.1:30000
-{
-  "origin": "82.196.7.200"
-}
-# curl httpbin.org/ip --proxy http://127.0.0.1:30000
-{
-  "origin": "82.196.7.200"
-}
+```bash
+curl http://httpbin.org/ip --proxy http://127.0.0.1:30000
+# {"origin": "82.196.7.200"}
 
-# curl httpbin.org/ip --proxy http://127.0.0.1:30001
-{
-  "origin": "84.17.37.159"
-}
-# curl httpbin.org/ip --proxy http://127.0.0.1:30001
-{
-  "origin": "84.17.37.159"
-}
+curl http://httpbin.org/ip --proxy http://127.0.0.1:30000
+# {"origin": "82.196.7.200"}  # Same IP
 ```
 
+**Best for**:
+- Browser automation (Selenium, Puppeteer, Playwright)
+- Session-based scraping
+- Login flows
 
-## Warning
-By default, ports can be used without authentication.
-Some VPSs that are directly exposed globally may require appropriate modifications to the docker-compose.
+## Architecture
 
-
-## Example of using a large number of public proxies with real-time updates
-see [public_proxy_cron.sh](public_proxy_cron.sh)
 ```
-0 * * * * /your_sh_path_here/public_proxy_cron.sh
+Client Request
+    ↓
+Squid (localhost:3128) - Rotating proxy mode
+    ├→ Direct HTTP Proxies (no container)
+    ├→ Gost Containers → SOCKS5/HTTP/HTTPS Proxies
+    └→ Gluetun Containers → OpenVPN → Internet
+
+OR
+
+Client Request → Gost/Gluetun Port (30000+) - Static IP mode
+```
+
+## OpenVPN Support
+
+To use VPN connections as proxies:
+
+### 1. Create OpenVPN Config
+
+```
+openvpn/{name}/
+  ├── {config}.ovpn
+  └── secret  # Optional: username on line 1, password on line 2
+```
+
+**Example**:
+```
+openvpn/nordvpn-us/
+  ├── us123.nordvpn.com.ovpn
+  └── secret
+```
+
+### 2. Generate Config
+
+The generator will automatically:
+- Detect all `.ovpn` files in `openvpn/` subdirectories
+- Create Gluetun containers for each VPN
+- Resolve hostnames to IPs (prevents DNS leaks)
+- Expose HTTP proxy on ports 30000+
+
+## Advanced Configuration
+
+### Custom Settings
+
+Copy and edit the config file:
+
+```bash
+cp setup/config.php.example setup/config.php
+```
+
+**Available options**:
+
+```php
+<?php
+return [
+    'start_port' => 30000,                    // Starting port for Gost
+    'start_shadowsocks_port' => 50000,        // Starting port for Shadowsocks
+    'gluetun_http_port' => 8888,              // HTTP port on Gluetun
+    'squid_default_options' => '...',         // Squid cache_peer options
+];
+```
+
+### Public Proxy Auto-Update
+
+Use the included script to automatically fetch and update free proxies:
+
+```bash
+# Edit crontab
+crontab -e
+
+# Add line (runs hourly)
+0 * * * * /path/to/public_proxy_cron.sh
+```
+
+See [public_proxy_cron.sh](public_proxy_cron.sh) for details.
+
+## Real-World Examples
+
+### NordVPN
+
+```
+# format: host:port:scheme:user:pass
+89.187.161.86:80:httpsquid:your-email@example.com:your-password
+```
+
+### TorGuard
+
+```
+173.254.222.146:1080:socks5:your-username:your-password
+```
+
+### Luminati/Bright Data
+
+```
+zproxy.lum-superproxy.io:22225:httpsquid:your-username:your-password
+```
+
+### Free Proxy Lists
+
+```
+# Simple IP:Port format
+192.168.1.100:8080
+172.31.22.222:3128
+```
+
+Sources: [clarketm/proxy-list](https://github.com/clarketm/proxy-list)
+
+## Troubleshooting
+
+### Check Container Status
+
+```bash
+docker-compose ps
+```
+
+### View Logs
+
+```bash
+# All containers
+docker-compose logs
+
+# Specific container
+docker-compose logs squid
+docker-compose logs proxy1
+```
+
+### Test Individual Proxy
+
+```bash
+# Test first Gost proxy
+curl http://httpbin.org/ip --proxy http://127.0.0.1:30000
+```
+
+### Regenerate Configuration
+
+```bash
+cd setup
+php generate.php
+cd ..
+docker-compose up -d
+```
+
+## Security Warning
+
+By default, proxies are accessible without authentication. If exposing to the internet:
+
+1. **Configure firewall rules** to restrict access
+2. **Use allowed_ip.txt** to whitelist IPs
+3. **Consider adding authentication** (see TODO)
+
+## Performance Tips
+
+- **Use `httpsquid` scheme** for HTTP proxies (no container overhead)
+- **Remove unused OpenVPN configs** to reduce containers
+- **Increase ulimits** if handling many connections
+- **Monitor with** `docker stats` to check resource usage
+
+## File Structure
+
+```
+.
+├── setup/
+│   ├── generate.php           # Main generator script
+│   ├── config.php.example     # Configuration template
+│   └── composer.json          # PHP dependencies
+├── template/
+│   ├── docker-compose.yml     # Docker compose template
+│   ├── squid.conf             # Squid config template
+│   └── allowed_ip.txt         # IP whitelist template
+├── config/                    # Generated configs (created by script)
+├── openvpn/                   # OpenVPN configurations
+├── proxyList.txt              # Your proxy list
+└── docker-compose.yml         # Generated compose file
+
 ```
 
 ## TODO
-- [ ] Username/Password Auth for Enterprise
+
+- [ ] Add username/password authentication for proxy access
+- [ ] Web UI for proxy management
+- [ ] Health check and auto-removal of dead proxies
+- [ ] Proxy performance metrics
+
+## Contributing
+
+Issues and pull requests are welcome at: https://github.com/39ff/docker-rotating-proxy
+
+## License
+
+See repository for license information.

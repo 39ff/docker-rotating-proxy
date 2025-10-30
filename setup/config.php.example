@@ -1,0 +1,19 @@
+<?php
+/**
+ * Configuration file for proxy generator
+ * Copy this file to config.php and customize as needed
+ */
+
+return [
+    // Starting port for Gost containers
+    'start_port' => 30000,
+
+    // Starting port for Shadowsocks (VPN)
+    'start_shadowsocks_port' => 50000,
+
+    // HTTP proxy port on Gluetun containers
+    'gluetun_http_port' => 8888,
+
+    // Default options for Squid cache_peer entries
+    'squid_default_options' => 'no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only',
+];
