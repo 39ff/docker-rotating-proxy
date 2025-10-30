@@ -41,6 +41,11 @@ foreach ($proxies as $proxy) {
 // Process OpenVPN configurations
 processOpenVPN($dockerCompose, $state, $config);
 
+// Add web authentication system if enabled
+if (!empty($config['enable_web_auth'])) {
+    addWebAuthServices($dockerCompose, $config);
+}
+
 // Write output files
 file_put_contents(__DIR__.'/../docker-compose.yml', Yaml::dump($dockerCompose, 4, 4));
 rename(__DIR__.'/squid.conf', __DIR__.'/../config/squid.conf');
@@ -49,6 +54,10 @@ copy(__DIR__.'/../template/allowed_ip.txt', __DIR__.'/../config/allowed_ip.txt')
 echo "✓ Generated docker-compose.yml\n";
 echo "✓ Generated config/squid.conf\n";
 echo "✓ Processed " . ($state['counter'] - 1) . " proxy entries\n";
+
+if (!empty($config['enable_web_auth'])) {
+    echo "✓ Web authentication enabled (http://localhost:" . $config['web_auth']['web_port'] . ")\n";
+}
 
 /**
  * Parse proxy list file with flexible format support
@@ -314,4 +323,230 @@ function resolveOpenVPNHostname($ovpnFile) {
     if ($modified) {
         file_put_contents($ovpnFile, implode(PHP_EOL, $lines));
     }
+}
+
+/**
+ * Add web authentication services to docker-compose
+ * Integrates squid-db-auth-web and squid-db-auth-ip for user management
+ */
+function addWebAuthServices(&$dockerCompose, $config) {
+    $webAuth = $config['web_auth'];
+
+    // Generate Laravel APP_KEY if not provided
+    $appKey = $webAuth['app_key'];
+    if (empty($appKey)) {
+        $appKey = 'base64:' . base64_encode(random_bytes(32));
+    }
+
+    // Add MySQL service
+    $dockerCompose['services']['db'] = [
+        'image' => 'mysql:8.0',
+        'container_name' => 'dockersquid_mysql',
+        'restart' => 'unless-stopped',
+        'ports' => [$webAuth['db_port'] . ':3306'],
+        'environment' => [
+            'MYSQL_ROOT_PASSWORD=' . $webAuth['db_root_password'],
+            'MYSQL_DATABASE=' . $webAuth['db_name'],
+            'MYSQL_USER=' . $webAuth['db_user'],
+            'MYSQL_PASSWORD=' . $webAuth['db_password'],
+            'TZ=UTC',
+        ],
+        'volumes' => ['db-store:/var/lib/mysql'],
+        'command' => '--default-authentication-plugin=mysql_native_password',
+    ];
+
+    // Add Redis service
+    $dockerCompose['services']['redis'] = [
+        'image' => 'redis:6.2-alpine',
+        'container_name' => 'dockersquid_redis',
+        'restart' => 'unless-stopped',
+        'ports' => [$webAuth['redis_port'] . ':6379'],
+        'volumes' => ['redis-store:/data'],
+    ];
+
+    // Add Laravel application service
+    $dockerCompose['services']['app'] = [
+        'image' => 'ghcr.io/39ff/squid-db-auth-web:latest',
+        'container_name' => 'dockersquid_app',
+        'restart' => 'unless-stopped',
+        'depends_on' => ['db', 'redis'],
+        'environment' => [
+            'APP_NAME=SquidUserManager',
+            'APP_ENV=production',
+            'APP_KEY=' . $appKey,
+            'APP_DEBUG=' . $webAuth['app_debug'],
+            'APP_URL=' . $webAuth['app_url'],
+            'DB_CONNECTION=mysql',
+            'DB_HOST=db',
+            'DB_PORT=3306',
+            'DB_DATABASE=' . $webAuth['db_name'],
+            'DB_USERNAME=' . $webAuth['db_user'],
+            'DB_PASSWORD=' . $webAuth['db_password'],
+            'REDIS_HOST=redis',
+            'REDIS_PASSWORD=null',
+            'REDIS_PORT=6379',
+            'CACHE_DRIVER=redis',
+            'SESSION_DRIVER=redis',
+            'QUEUE_CONNECTION=sync',
+        ],
+    ];
+
+    // If source path is provided, mount it
+    if (!empty($webAuth['web_source_path'])) {
+        $dockerCompose['services']['app']['volumes'] = [
+            $webAuth['web_source_path'] . ':/app'
+        ];
+    }
+
+    // Add Nginx web server
+    $dockerCompose['services']['web'] = [
+        'image' => 'nginx:alpine',
+        'container_name' => 'dockersquid_web',
+        'restart' => 'unless-stopped',
+        'ports' => [$webAuth['web_port'] . ':80'],
+        'depends_on' => ['app'],
+        'volumes' => [
+            './config/nginx.conf:/etc/nginx/conf.d/default.conf:ro',
+        ],
+    ];
+
+    // Update Squid service to depend on db and include auth script
+    if (isset($dockerCompose['services']['squid'])) {
+        if (!isset($dockerCompose['services']['squid']['depends_on'])) {
+            $dockerCompose['services']['squid']['depends_on'] = [];
+        }
+        $dockerCompose['services']['squid']['depends_on'][] = 'db';
+
+        // Add volume for auth script
+        if (!isset($dockerCompose['services']['squid']['volumes'])) {
+            $dockerCompose['services']['squid']['volumes'] = [];
+        }
+        $dockerCompose['services']['squid']['volumes'][] = './config/basic_db_ip_auth.php:/etc/squid/basic_db_ip_auth.php:ro';
+    }
+
+    // Add volumes for persistence
+    if (!isset($dockerCompose['volumes'])) {
+        $dockerCompose['volumes'] = [];
+    }
+    $dockerCompose['volumes']['db-store'] = [
+        'driver' => 'local',
+        'driver_opts' => ['type' => 'none', 'o' => 'bind', 'device' => './volumes/mysql'],
+    ];
+    $dockerCompose['volumes']['redis-store'] = [
+        'driver' => 'local',
+        'driver_opts' => ['type' => 'none', 'o' => 'bind', 'device' => './volumes/redis'],
+    ];
+
+    // Create volumes directory structure
+    @mkdir(__DIR__.'/../volumes', 0755, true);
+    @mkdir(__DIR__.'/../volumes/mysql', 0755, true);
+    @mkdir(__DIR__.'/../volumes/redis', 0755, true);
+
+    // Download and save auth IP script
+    downloadAuthScript($webAuth['auth_ip_script_url'], __DIR__.'/../config/basic_db_ip_auth.php');
+
+    // Generate nginx configuration
+    generateNginxConfig(__DIR__.'/../config/nginx.conf');
+
+    // Generate auth-enabled squid configuration
+    generateAuthSquidConfig(__DIR__.'/squid.conf', $webAuth);
+
+    echo "Setting up web authentication services...\n";
+    echo "- MySQL database\n";
+    echo "- Redis cache\n";
+    echo "- Laravel application\n";
+    echo "- Nginx web server\n";
+}
+
+/**
+ * Download authentication script from GitHub
+ */
+function downloadAuthScript($url, $destination) {
+    echo "Downloading auth script from $url...\n";
+
+    $content = @file_get_contents($url);
+    if ($content === false) {
+        echo "Warning: Could not download auth script. Using placeholder.\n";
+        $content = "<?php\n// Auth script placeholder\n// Download manually from: $url\n";
+    }
+
+    file_put_contents($destination, $content);
+    echo "✓ Saved auth script to $destination\n";
+}
+
+/**
+ * Generate Nginx configuration for Laravel
+ */
+function generateNginxConfig($destination) {
+    $config = <<<'NGINX'
+server {
+    listen 80;
+    server_name _;
+    root /app/public;
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+
+    index index.php;
+
+    charset utf-8;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass app:9000;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+NGINX;
+
+    file_put_contents($destination, $config);
+    echo "✓ Generated nginx config\n";
+}
+
+/**
+ * Update squid configuration to use database authentication
+ */
+function generateAuthSquidConfig($squidConfPath, $webAuth) {
+    // Add auth configuration to squid.conf
+    $authConfig = <<<SQUID
+
+# Database authentication configuration
+auth_param basic program /etc/squid/basic_db_ip_auth.php --dsn "mysql:dbname={$webAuth['db_name']};host=db;charset=utf8mb4" --user {$webAuth['db_user']} --password {$webAuth['db_password']}
+auth_param basic children 20 startup=5 idle=1
+auth_param basic realm Squid Proxy
+auth_param basic credentialsttl 2 hours
+
+# ACL for authenticated users
+acl authenticated_users proxy_auth REQUIRED
+http_access allow authenticated_users
+
+SQUID;
+
+    // Prepend auth config to existing squid.conf (before first cache_peer line)
+    $existingConfig = file_get_contents($squidConfPath);
+
+    // Insert auth config before first cache_peer line only
+    if (preg_match('/^cache_peer/m', $existingConfig, $matches, PREG_OFFSET_CAPTURE)) {
+        $insertPos = $matches[0][1];
+        $existingConfig = substr_replace($existingConfig, $authConfig . "\n", $insertPos, 0);
+        file_put_contents($squidConfPath, $existingConfig);
+    } else {
+        // No cache_peer lines, append to end
+        file_put_contents($squidConfPath, $authConfig, FILE_APPEND);
+    }
+
+    echo "✓ Added database authentication to squid config\n";
 }

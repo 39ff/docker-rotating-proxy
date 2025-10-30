@@ -16,4 +16,36 @@ return [
 
     // Default options for Squid cache_peer entries
     'squid_default_options' => 'no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only',
+
+    // Web-based authentication system
+    // Requires: https://github.com/39ff/squid-db-auth-web
+    //           https://github.com/39ff/squid-db-auth-ip
+    'enable_web_auth' => false,
+
+    'web_auth' => [
+        // Web UI port (default: 8080)
+        'web_port' => 8080,
+
+        // MySQL database configuration
+        'db_port' => 3306,
+        'db_name' => 'squidmin',
+        'db_user' => 'squidmin',
+        'db_password' => 'squidmin_password',
+        'db_root_password' => 'root_password',
+
+        // Laravel app configuration
+        'app_key' => '', // Leave empty to auto-generate
+        'app_debug' => 'true',
+        'app_url' => 'http://localhost:8080',
+
+        // Redis configuration (used for sessions/cache)
+        'redis_port' => 6379,
+
+        // Path to squid-db-auth-web source code
+        // If empty, will use Docker image (recommended)
+        'web_source_path' => '',
+
+        // squid-db-auth-ip script path (will be copied to squid container)
+        'auth_ip_script_url' => 'https://raw.githubusercontent.com/39ff/squid-db-auth-ip/main/basic_db_ip_auth.php',
+    ],
 ];

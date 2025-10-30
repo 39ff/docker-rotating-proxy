@@ -2,6 +2,8 @@
 docker-compose.yml
 config/squid.conf
 config/allowed_ip.txt
+config/nginx.conf
+config/basic_db_ip_auth.php
 
 # Composer dependencies
 setup/vendor/
@@ -10,6 +12,9 @@ setup/composer.phar
 # User configuration
 setup/config.php
 setup/squid.conf
+
+# Database and cache volumes
+volumes/
 
 # Temporary files
 *.log

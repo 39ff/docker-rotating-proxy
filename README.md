@@ -199,7 +199,117 @@ return [
     'start_shadowsocks_port' => 50000,        // Starting port for Shadowsocks
     'gluetun_http_port' => 8888,              // HTTP port on Gluetun
     'squid_default_options' => '...',         // Squid cache_peer options
+    'enable_web_auth' => false,               // Enable web-based user management
 ];
+```
+
+### Web-Based User Management (Optional)
+
+This project integrates with [squid-db-auth-web](https://github.com/39ff/squid-db-auth-web) and [squid-db-auth-ip](https://github.com/39ff/squid-db-auth-ip) to provide a web UI for managing proxy users and authentication.
+
+**Features**:
+- Web UI for user management
+- Username/password authentication
+- IP-based authentication
+- Database-backed user credentials
+- Role-based access control
+
+**Setup**:
+
+1. **Enable in configuration**:
+
+```bash
+cp setup/config.php.example setup/config.php
+```
+
+Edit `setup/config.php`:
+
+```php
+<?php
+return [
+    // ... other options ...
+
+    'enable_web_auth' => true,
+
+    'web_auth' => [
+        'web_port' => 8080,                    // Web UI port
+        'db_name' => 'squidmin',
+        'db_user' => 'squidmin',
+        'db_password' => 'your_secure_password',  // Change this!
+        'db_root_password' => 'your_root_password', // Change this!
+        'app_url' => 'http://localhost:8080',
+    ],
+];
+```
+
+2. **Generate configuration**:
+
+```bash
+cd setup
+php generate.php
+```
+
+This will automatically:
+- Add MySQL database service
+- Add Redis cache service
+- Add Laravel application (squid-db-auth-web)
+- Add Nginx web server
+- Download authentication scripts
+- Configure Squid to use database authentication
+
+3. **Start services**:
+
+```bash
+cd ..
+docker-compose up -d
+```
+
+Wait for services to initialize (about 30 seconds).
+
+4. **Initialize database** (first time only):
+
+```bash
+# Run database migrations
+docker-compose exec app php artisan migrate
+
+# Create admin user
+docker-compose exec app php artisan db:seed --class=CreateAdministratorSeeder
+```
+
+5. **Access Web UI**:
+
+Open http://localhost:8080 in your browser.
+
+**Default admin credentials**: Check the seeder output or application documentation.
+
+**Using authenticated proxy**:
+
+```bash
+# With username and password
+curl http://httpbin.org/ip --proxy http://username:password@127.0.0.1:3128
+
+# Test authentication
+curl -v http://httpbin.org/ip --proxy http://127.0.0.1:3128
+# Should return 407 Proxy Authentication Required
+```
+
+**Managing users**:
+- Add/remove users via web UI
+- Set user quotas and bandwidth limits
+- View usage statistics
+- IP whitelist management
+
+**Architecture with authentication**:
+
+```
+                    Web Browser
+                         ↓
+              Web UI (localhost:8080)
+                    ↙        ↘
+              Laravel App    MySQL DB
+                              ↓
+Client → Squid (auth) → Database Check → Upstream Proxies
+         (port 3128)
 ```
 
 ### Public Proxy Auto-Update
@@ -318,10 +428,11 @@ By default, proxies are accessible without authentication. If exposing to the in
 
 ## TODO
 
-- [ ] Add username/password authentication for proxy access
-- [ ] Web UI for proxy management
+- [x] Add username/password authentication for proxy access (via squid-db-auth-web)
+- [x] Web UI for proxy management (via squid-db-auth-web)
 - [ ] Health check and auto-removal of dead proxies
 - [ ] Proxy performance metrics
+- [ ] API endpoints for automation
 
 ## Contributing
 
