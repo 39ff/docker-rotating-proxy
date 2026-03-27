@@ -99,7 +99,7 @@ if ! grep -q 'socks_type' "${CACHE_CF}"; then
 
     # Insert SOCKS option parsing after the first occurrence of the anchor option block
     # We use a Python script for reliable multi-line insertion
-    python3 << 'PYEOF' "${CACHE_CF}" "${ANCHOR}"
+    python3 - "${CACHE_CF}" "${ANCHOR}" << 'PYEOF'
 import sys, re
 
 filepath = sys.argv[1]
@@ -179,7 +179,7 @@ fi
 # We look for the dispatch() call that happens after peer connection
 # and add SOCKS negotiation before it.
 if ! grep -q 'socks_type' "${FWD_STATE}"; then
-    python3 << 'PYEOF' "${FWD_STATE}"
+    python3 - "${FWD_STATE}" << 'PYEOF'
 import sys, re
 
 filepath = sys.argv[1]
@@ -271,7 +271,7 @@ if ! grep -q 'SocksPeerConnector.h' "${TUNNEL_CC}"; then
 fi
 
 if ! grep -q 'socks_type' "${TUNNEL_CC}"; then
-    python3 << 'PYEOF' "${TUNNEL_CC}"
+    python3 - "${TUNNEL_CC}" << 'PYEOF'
 import sys, re
 
 filepath = sys.argv[1]

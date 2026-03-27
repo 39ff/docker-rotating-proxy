@@ -67,6 +67,7 @@ RUN cd "squid-${SQUID_VERSION}" \
 # ---------- stage 2: runtime ----------------------------------------------
 FROM debian:bookworm-slim
 
+ARG SQUID_VERSION=6.10
 LABEL maintainer="docker-rotating-proxy"
 LABEL description="Squid ${SQUID_VERSION} with SOCKS4/SOCKS5 cache_peer support"
 
