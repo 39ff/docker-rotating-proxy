@@ -15,6 +15,10 @@ $gluetun_http_port = 8888;
 $keys = ['host', 'port', 'scheme', 'user', 'pass'];
 $squid_default = 'cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=%s';
 
+// SOCKS cache_peer template: uses originserver because after SOCKS tunnel
+// the connection is direct to the target (not an HTTP proxy).
+$squid_socks = 'cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only originserver name=%s %s';
+
 while ($line = fgets($proxies)){
     $line = trim($line);
     $proxyInfo = array_combine($keys, array_pad((explode(":", $line, 5)), 5, ''));
@@ -36,8 +40,25 @@ while ($line = fgets($proxies)){
             //Username:Password Auth
             $squid_conf[] = vsprintf('login=%s:%s', array_map('urlencode', [$proxyInfo['user'], $proxyInfo['pass']]));
         }
-    }else{
-        //other proxy type ex:socks
+    }
+    elseif(in_array($proxyInfo['scheme'], ['socks4', 'socks5'], true)){
+        // Native SOCKS support via Squid cache_peer patch (no Gost needed)
+        $socksOpt = $proxyInfo['scheme'];  // "socks4" or "socks5"
+        if ($proxyInfo['user'] && $proxyInfo['pass']) {
+            $socksOpt .= sprintf(' socks-user=%s socks-pass=%s',
+                urlencode($proxyInfo['user']),
+                urlencode($proxyInfo['pass'])
+            );
+        }
+        $squid_conf[] = sprintf($squid_socks,
+            $proxyInfo['host'],
+            $proxyInfo['port'],
+            'socks'.$i,
+            $socksOpt
+        );
+    }
+    else{
+        // Other proxy types (http, https, etc.) – use Gost as HTTP proxy bridge
         if ($proxyInfo['user'] && $proxyInfo['pass']) {
             $cred = vsprintf('%s:%s@', array_map('urlencode', [$proxyInfo['user'], $proxyInfo['pass']]));
         }
