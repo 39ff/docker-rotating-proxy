@@ -146,6 +146,10 @@ static inline bool socks5Connect(int fd,
         if (!hasAuth)
             return false;
 
+        /* RFC 1929: username and password are each max 255 bytes */
+        if (user.length() > 255 || pass.length() > 255)
+            return false;
+
         uint8_t auth[515];
         size_t aPos = 0;
         auth[aPos++] = 0x01;  /* sub-negotiation VER */

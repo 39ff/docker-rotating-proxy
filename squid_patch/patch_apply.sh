@@ -237,8 +237,9 @@ if not inserted:
         print("    Inserted SOCKS hook (pattern 2)")
 
 if not inserted:
-    print("WARNING: Could not find dispatch() insertion point in FwdState.cc", file=sys.stderr)
-    print("         SOCKS support for HTTP requests may not work", file=sys.stderr)
+    print("ERROR: Could not find dispatch() insertion point in FwdState.cc", file=sys.stderr)
+    print("       SOCKS support for HTTP requests will not work", file=sys.stderr)
+    sys.exit(1)
 else:
     with open(filepath, 'w') as f:
         f.write(content)
@@ -352,7 +353,8 @@ if inserted:
     with open(filepath, 'w') as f:
         f.write(content)
 else:
-    print("WARNING: Could not patch tunnel.cc - HTTPS tunneling through SOCKS peers may not work", file=sys.stderr)
+    print("ERROR: Could not patch tunnel.cc - HTTPS tunneling through SOCKS peers will not work", file=sys.stderr)
+    sys.exit(1)
 
 PYEOF
 fi

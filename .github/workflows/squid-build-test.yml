@@ -183,13 +183,20 @@ jobs:
             -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
             ${{ env.SQUID_IMAGE }}
           echo "Waiting for Squid to start..."
-          for i in $(seq 1 15); do
+          READY=0
+          for i in $(seq 1 30); do
             if curl -sf -x http://127.0.0.1:3128 -o /dev/null http://httpbin.org/ip 2>/dev/null; then
               echo "Squid is ready after ${i}s"
+              READY=1
               break
             fi
             sleep 1
           done
+          if [ "$READY" -eq 0 ]; then
+            echo "ERROR: Squid failed to start within 30 seconds"
+            docker logs squid-test 2>&1 || true
+            exit 1
+          fi
 
       - name: Test HTTP request through SOCKS5 peer
         run: |
@@ -269,13 +276,20 @@ jobs:
             -v /tmp/squid-conf-auth:/etc/squid/conf.d:ro \
             -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
             ${{ env.SQUID_IMAGE }}
-          for i in $(seq 1 15); do
+          READY=0
+          for i in $(seq 1 30); do
             if curl -sf -x http://127.0.0.1:3128 -o /dev/null http://httpbin.org/ip 2>/dev/null; then
               echo "Squid ready after ${i}s"
+              READY=1
               break
             fi
             sleep 1
           done
+          if [ "$READY" -eq 0 ]; then
+            echo "ERROR: Squid failed to start within 30 seconds"
+            docker logs squid-auth 2>&1 || true
+            exit 1
+          fi
 
       - name: Test HTTP through authenticated SOCKS5
         run: |

@@ -13,4 +13,4 @@ fi
 chown -R squid:squid /var/cache/squid /var/log/squid /var/run/squid 2>/dev/null || true
 
 echo "Starting Squid with config: ${SQUID_CONFIG_FILE}"
-exec squid -N -f "${SQUID_CONFIG_FILE}" "$@"
+exec gosu squid squid -N -f "${SQUID_CONFIG_FILE}" "$@"

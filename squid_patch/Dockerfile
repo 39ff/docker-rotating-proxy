@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build
 
 # Download and extract Squid source (pinned version)
-RUN wget -q "http://www.squid-cache.org/Versions/v6/squid-${SQUID_VERSION}.tar.xz" \
+RUN wget -q "https://www.squid-cache.org/Versions/v6/squid-${SQUID_VERSION}.tar.xz" \
         -O squid.tar.xz \
     && tar xf squid.tar.xz \
     && rm squid.tar.xz
@@ -78,6 +78,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libltdl7 \
         ca-certificates \
         curl \
+        gosu \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install/ /
