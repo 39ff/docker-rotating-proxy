@@ -1,0 +1,379 @@
+name: Squid SOCKS Patch Build & Test
+
+on:
+  push:
+    paths:
+      - 'squid_patch/**'
+      - 'setup/**'
+      - 'template/**'
+      - '.github/workflows/squid-build-test.yml'
+  pull_request:
+    paths:
+      - 'squid_patch/**'
+      - 'setup/**'
+      - 'template/**'
+      - '.github/workflows/squid-build-test.yml'
+  workflow_dispatch:
+
+env:
+  SQUID_IMAGE: squid-socks:6.10
+
+jobs:
+  # ------------------------------------------------------------------
+  # 1. Build the custom Squid image with SOCKS patch
+  # ------------------------------------------------------------------
+  build:
+    name: Build Squid 6.10 + SOCKS Patch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Squid image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./squid_patch
+          file: ./squid_patch/Dockerfile
+          tags: ${{ env.SQUID_IMAGE }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify Squid binary
+        run: |
+          docker run --rm ${{ env.SQUID_IMAGE }} squid -v
+          echo "--- Squid binary OK ---"
+
+      - name: Save image for test jobs
+        run: docker save ${{ env.SQUID_IMAGE }} -o /tmp/squid-image.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: squid-image
+          path: /tmp/squid-image.tar
+          retention-days: 1
+
+  # ------------------------------------------------------------------
+  # 2. Test: Squid config parsing (socks4/socks5 options)
+  # ------------------------------------------------------------------
+  test-config:
+    name: Test Squid Config Parsing
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: squid-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/squid-image.tar
+
+      - name: Test SOCKS5 cache_peer config parsing
+        run: |
+          cat > /tmp/squid-socks5.conf <<'CONF'
+          http_port 3128
+          acl all src 0.0.0.0/0
+          http_access allow all
+          never_direct allow all
+          cache_peer 127.0.0.1 parent 1080 0 no-query no-digest round-robin proxy-only originserver name=test_socks5 socks5 socks-user=testuser socks-pass=testpass
+          CONF
+
+          docker run --rm \
+            -v /tmp/squid-socks5.conf:/etc/squid/conf.d/squid.conf:ro \
+            ${{ env.SQUID_IMAGE }} \
+            squid -k parse -f /etc/squid/conf.d/squid.conf 2>&1 | tee /tmp/parse-output.txt
+
+          echo "--- SOCKS5 config parse OK ---"
+
+      - name: Test SOCKS4 cache_peer config parsing
+        run: |
+          cat > /tmp/squid-socks4.conf <<'CONF'
+          http_port 3128
+          acl all src 0.0.0.0/0
+          http_access allow all
+          never_direct allow all
+          cache_peer 127.0.0.1 parent 1080 0 no-query no-digest round-robin proxy-only originserver name=test_socks4 socks4
+          CONF
+
+          docker run --rm \
+            -v /tmp/squid-socks4.conf:/etc/squid/conf.d/squid.conf:ro \
+            ${{ env.SQUID_IMAGE }} \
+            squid -k parse -f /etc/squid/conf.d/squid.conf 2>&1 | tee /tmp/parse-output.txt
+
+          echo "--- SOCKS4 config parse OK ---"
+
+      - name: Test multiple SOCKS peers config
+        run: |
+          cat > /tmp/squid-multi.conf <<'CONF'
+          http_port 3128
+          acl all src 0.0.0.0/0
+          http_access allow all
+          never_direct allow all
+          cache_peer 10.0.0.1 parent 1080 0 no-query no-digest round-robin proxy-only originserver name=socks1 socks5 socks-user=user1 socks-pass=pass1
+          cache_peer 10.0.0.2 parent 1080 0 no-query no-digest round-robin proxy-only originserver name=socks2 socks5 socks-user=user2 socks-pass=pass2
+          cache_peer 10.0.0.3 parent 1081 0 no-query no-digest round-robin proxy-only originserver name=socks3 socks4
+          CONF
+
+          docker run --rm \
+            -v /tmp/squid-multi.conf:/etc/squid/conf.d/squid.conf:ro \
+            ${{ env.SQUID_IMAGE }} \
+            squid -k parse -f /etc/squid/conf.d/squid.conf 2>&1
+
+          echo "--- Multiple SOCKS peers config OK ---"
+
+  # ------------------------------------------------------------------
+  # 3. Test: SOCKS5 proxy end-to-end via Squid
+  # ------------------------------------------------------------------
+  test-socks5-e2e:
+    name: Test SOCKS5 End-to-End
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: squid-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/squid-image.tar
+
+      - name: Start SOCKS5 test server (microsocks)
+        run: |
+          docker run -d --name socks5-server --network host \
+            ghcr.io/rofl0r/microsocks:latest -p 11080
+          sleep 2
+          docker logs socks5-server
+
+      - name: Create Squid config for SOCKS5 peer
+        run: |
+          mkdir -p /tmp/squid-conf
+          cat > /tmp/squid-conf/squid.conf <<'CONF'
+          http_port 3128
+          acl all src 0.0.0.0/0
+          http_access allow all
+          never_direct allow all
+          server_persistent_connections off
+          client_persistent_connections off
+          cache_peer 127.0.0.1 parent 11080 0 no-query no-digest connect-fail-limit=2 connect-timeout=8 round-robin proxy-only originserver name=socks_test socks5
+          visible_hostname test
+          access_log stdio:/proc/self/fd/1 combined
+          CONF
+
+          cat > /tmp/squid-conf/allowed_ip.txt <<'ALLOW'
+          0.0.0.0/0
+          ALLOW
+
+      - name: Start Squid with SOCKS5 peer
+        run: |
+          docker run -d --name squid-test --network host \
+            -v /tmp/squid-conf:/etc/squid/conf.d:ro \
+            -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
+            ${{ env.SQUID_IMAGE }}
+          echo "Waiting for Squid to start..."
+          for i in $(seq 1 15); do
+            if curl -sf -x http://127.0.0.1:3128 -o /dev/null http://httpbin.org/ip 2>/dev/null; then
+              echo "Squid is ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Test HTTP request through SOCKS5 peer
+        run: |
+          RESPONSE=$(curl -sf -x http://127.0.0.1:3128 http://httpbin.org/ip)
+          echo "Response: ${RESPONSE}"
+          echo "${RESPONSE}" | grep -q "origin" || { echo "FAIL: unexpected response"; exit 1; }
+          echo "--- HTTP via SOCKS5 OK ---"
+
+      - name: Test HTTPS request through SOCKS5 peer
+        run: |
+          RESPONSE=$(curl -sf -x http://127.0.0.1:3128 https://httpbin.org/ip)
+          echo "Response: ${RESPONSE}"
+          echo "${RESPONSE}" | grep -q "origin" || { echo "FAIL: unexpected response"; exit 1; }
+          echo "--- HTTPS via SOCKS5 OK ---"
+
+      - name: Show Squid logs on failure
+        if: failure()
+        run: |
+          echo "=== Squid logs ==="
+          docker logs squid-test 2>&1 || true
+          echo "=== SOCKS5 server logs ==="
+          docker logs socks5-server 2>&1 || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f squid-test socks5-server 2>/dev/null || true
+
+  # ------------------------------------------------------------------
+  # 4. Test: SOCKS5 with authentication
+  # ------------------------------------------------------------------
+  test-socks5-auth:
+    name: Test SOCKS5 with Auth
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: squid-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/squid-image.tar
+
+      - name: Start SOCKS5 server with auth (microsocks)
+        run: |
+          docker run -d --name socks5-auth --network host \
+            ghcr.io/rofl0r/microsocks:latest -u testuser -P testpass -p 11081
+          sleep 2
+
+      - name: Create Squid config with SOCKS5 auth
+        run: |
+          mkdir -p /tmp/squid-conf-auth
+          cat > /tmp/squid-conf-auth/squid.conf <<'CONF'
+          http_port 3128
+          acl all src 0.0.0.0/0
+          http_access allow all
+          never_direct allow all
+          server_persistent_connections off
+          client_persistent_connections off
+          cache_peer 127.0.0.1 parent 11081 0 no-query no-digest connect-fail-limit=2 connect-timeout=8 round-robin proxy-only originserver name=socks_auth socks5 socks-user=testuser socks-pass=testpass
+          visible_hostname test
+          access_log stdio:/proc/self/fd/1 combined
+          CONF
+
+          cat > /tmp/squid-conf-auth/allowed_ip.txt <<'ALLOW'
+          0.0.0.0/0
+          ALLOW
+
+      - name: Start Squid with SOCKS5 auth peer
+        run: |
+          docker run -d --name squid-auth --network host \
+            -v /tmp/squid-conf-auth:/etc/squid/conf.d:ro \
+            -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
+            ${{ env.SQUID_IMAGE }}
+          for i in $(seq 1 15); do
+            if curl -sf -x http://127.0.0.1:3128 -o /dev/null http://httpbin.org/ip 2>/dev/null; then
+              echo "Squid ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Test HTTP through authenticated SOCKS5
+        run: |
+          RESPONSE=$(curl -sf -x http://127.0.0.1:3128 http://httpbin.org/ip)
+          echo "Response: ${RESPONSE}"
+          echo "${RESPONSE}" | grep -q "origin" || { echo "FAIL"; exit 1; }
+          echo "--- HTTP via SOCKS5 auth OK ---"
+
+      - name: Test HTTPS through authenticated SOCKS5
+        run: |
+          RESPONSE=$(curl -sf -x http://127.0.0.1:3128 https://httpbin.org/ip)
+          echo "Response: ${RESPONSE}"
+          echo "${RESPONSE}" | grep -q "origin" || { echo "FAIL"; exit 1; }
+          echo "--- HTTPS via SOCKS5 auth OK ---"
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== Squid logs ==="
+          docker logs squid-auth 2>&1 || true
+          echo "=== SOCKS5 auth server logs ==="
+          docker logs socks5-auth 2>&1 || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f squid-auth socks5-auth 2>/dev/null || true
+
+  # ------------------------------------------------------------------
+  # 5. Test: generate.php produces correct config
+  # ------------------------------------------------------------------
+  test-generate:
+    name: Test Config Generator
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PHP dependencies
+        run: |
+          docker run --rm -v "$(pwd)/setup:/app" -w /app composer:2 install --no-interaction --quiet
+
+      - name: Run generate.php with SOCKS proxy list
+        run: |
+          cat > proxyList.txt <<'LIST'
+          10.0.0.1:1080:socks5:user1:pass1
+          10.0.0.2:1080:socks5:user2:pass2
+          10.0.0.3:1081:socks4::
+          192.168.1.1:8080
+          10.0.0.4:3128:httpsquid:admin:secret
+          10.0.0.5:8080:http:user:pass
+          LIST
+
+          docker run --rm -v "$(pwd):/app" php:8.2-cli php /app/setup/generate.php
+
+      - name: Verify generated squid.conf has SOCKS peers
+        run: |
+          echo "=== Generated squid.conf ==="
+          cat config/squid.conf
+          echo ""
+
+          # Check socks5 peers use native SOCKS options
+          grep -q 'socks5' config/squid.conf || { echo "FAIL: socks5 option not found"; exit 1; }
+          grep -q 'socks-user=user1' config/squid.conf || { echo "FAIL: socks-user not found"; exit 1; }
+          grep -q 'socks-pass=pass1' config/squid.conf || { echo "FAIL: socks-pass not found"; exit 1; }
+          grep -q 'originserver' config/squid.conf || { echo "FAIL: originserver not found"; exit 1; }
+
+          # Check socks4 peer
+          grep -q 'socks4' config/squid.conf || { echo "FAIL: socks4 option not found"; exit 1; }
+
+          # Check open proxy (no socks, no gost)
+          grep -q 'name=public' config/squid.conf || { echo "FAIL: open proxy not found"; exit 1; }
+
+          # Check httpsquid peer
+          grep -q 'name=private' config/squid.conf || { echo "FAIL: httpsquid peer not found"; exit 1; }
+
+          echo "--- squid.conf generation OK ---"
+
+      - name: Verify generated docker-compose.yml
+        run: |
+          echo "=== Generated docker-compose.yml ==="
+          cat docker-compose.yml
+          echo ""
+
+          # Gost container should only exist for http type (not for socks4/socks5)
+          # We have 1 http proxy -> 1 gost container
+          GOST_COUNT=$(grep -c 'ginuerzh/gost' docker-compose.yml || true)
+          echo "Gost containers: ${GOST_COUNT}"
+          [ "${GOST_COUNT}" -eq 1 ] || { echo "FAIL: expected 1 gost container, got ${GOST_COUNT}"; exit 1; }
+
+          echo "--- docker-compose.yml generation OK ---"
+
+      - name: Verify no Gost for SOCKS proxies
+        run: |
+          # socks5/socks4 should NOT create gost containers
+          # Only 'http' type should use gost
+          if grep -q 'dockergost_1\|dockergost_2\|dockergost_3' docker-compose.yml; then
+            echo "FAIL: SOCKS proxies should not create Gost containers"
+            exit 1
+          fi
+          echo "--- No Gost for SOCKS proxies OK ---"
