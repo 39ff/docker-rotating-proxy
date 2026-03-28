@@ -159,18 +159,18 @@ jobs:
           curl -sf http://127.0.0.1:18080/ip
           echo "--- Local HTTP server ready ---"
 
-      - name: Start SOCKS5 test server
+      - name: Build and start SOCKS5 test server (microsocks)
         run: |
-          docker run -d --name socks5-server --network host \
-            -e PROXY_PORT=11080 \
-            serjs/go-socks5-proxy:latest
-          sleep 2
-          docker logs socks5-server
+          git clone --depth 1 https://github.com/rofl0r/microsocks.git /tmp/microsocks
+          cd /tmp/microsocks && make -j"$(nproc)"
+          /tmp/microsocks/microsocks -p 11080 &
+          sleep 1
           echo "--- Verify SOCKS5 server directly ---"
           curl -sf --socks5-hostname 127.0.0.1:11080 http://127.0.0.1:18080/ip || {
             echo "ERROR: SOCKS5 server not working"
             exit 1
           }
+          echo "--- SOCKS5 server OK ---"
 
       - name: Create Squid config for SOCKS5 peer
         run: |
@@ -248,7 +248,6 @@ jobs:
         run: |
           mkdir -p /tmp/test-logs
           docker logs squid-test > /tmp/test-logs/squid.log 2>&1 || true
-          docker logs socks5-server > /tmp/test-logs/socks5.log 2>&1 || true
           cp /tmp/squid-conf/squid.conf /tmp/test-logs/ 2>/dev/null || true
           cp /tmp/proxy-response.txt /tmp/test-logs/ 2>/dev/null || true
           cp /tmp/proxy-stderr.txt /tmp/test-logs/ 2>/dev/null || true
@@ -264,7 +263,8 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker rm -f squid-test socks5-server 2>/dev/null || true
+          docker rm -f squid-test 2>/dev/null || true
+          pkill microsocks 2>/dev/null || true
           kill %1 2>/dev/null || true
 
   # ------------------------------------------------------------------
@@ -295,20 +295,20 @@ jobs:
           sleep 1
           curl -sf http://127.0.0.1:18081/ip
 
-      - name: Start SOCKS5 server with auth
+      - name: Build and start SOCKS5 server with auth (microsocks)
         run: |
-          docker run -d --name socks5-auth --network host \
-            -e PROXY_PORT=11081 \
-            -e PROXY_USER=testuser \
-            -e PROXY_PASSWORD=testpass \
-            serjs/go-socks5-proxy:latest
-          sleep 2
-          docker logs socks5-auth
+          if [ ! -f /tmp/microsocks/microsocks ]; then
+            git clone --depth 1 https://github.com/rofl0r/microsocks.git /tmp/microsocks
+            cd /tmp/microsocks && make -j"$(nproc)"
+          fi
+          /tmp/microsocks/microsocks -u testuser -P testpass -p 11081 &
+          sleep 1
           echo "--- Verify SOCKS5 auth server directly ---"
           curl -sf --socks5-hostname testuser:testpass@127.0.0.1:11081 http://127.0.0.1:18081/ip || {
             echo "ERROR: SOCKS5 auth server not working"
             exit 1
           }
+          echo "--- SOCKS5 auth server OK ---"
 
       - name: Create Squid config with SOCKS5 auth
         run: |
@@ -384,7 +384,6 @@ jobs:
         run: |
           mkdir -p /tmp/test-logs-auth
           docker logs squid-auth > /tmp/test-logs-auth/squid.log 2>&1 || true
-          docker logs socks5-auth > /tmp/test-logs-auth/socks5.log 2>&1 || true
           cp /tmp/squid-conf-auth/squid.conf /tmp/test-logs-auth/ 2>/dev/null || true
           cp /tmp/proxy-response.txt /tmp/test-logs-auth/ 2>/dev/null || true
           cp /tmp/proxy-stderr.txt /tmp/test-logs-auth/ 2>/dev/null || true
@@ -400,7 +399,8 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker rm -f squid-auth socks5-auth 2>/dev/null || true
+          docker rm -f squid-auth 2>/dev/null || true
+          pkill microsocks 2>/dev/null || true
           kill %1 2>/dev/null || true
 
   # ------------------------------------------------------------------
