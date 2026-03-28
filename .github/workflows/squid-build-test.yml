@@ -249,6 +249,22 @@ jobs:
           grep -q "test" /tmp/proxy-response.txt || { echo "FAIL: unexpected response body"; exit 1; }
           echo "--- HTTP via SOCKS5 OK ---"
 
+      - name: Post Squid logs to PR on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            let logs = '';
+            try { logs = execSync('docker logs squid-test 2>&1', {encoding: 'utf8', maxBuffer: 50*1024}); } catch(e) { logs = e.stdout || e.message; }
+            const body = `### E2E Test Squid Logs\n\`\`\`\n${logs.slice(-3000)}\n\`\`\``;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 30,
+              body: body
+            });
+
       - name: Collect logs
         if: always()
         run: |
@@ -389,6 +405,22 @@ jobs:
           [ "${HTTP_CODE}" = "200" ] || { echo "FAIL: expected 200, got ${HTTP_CODE}"; exit 1; }
           grep -q "test" /tmp/proxy-response.txt || { echo "FAIL: unexpected body"; exit 1; }
           echo "--- HTTP via SOCKS5 auth OK ---"
+
+      - name: Post Squid logs to PR on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            let logs = '';
+            try { logs = execSync('docker logs squid-auth 2>&1', {encoding: 'utf8', maxBuffer: 50*1024}); } catch(e) { logs = e.stdout || e.message; }
+            const body = `### Auth Test Squid Logs\n\`\`\`\n${logs.slice(-3000)}\n\`\`\``;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 30,
+              body: body
+            });
 
       - name: Collect logs
         if: always()
