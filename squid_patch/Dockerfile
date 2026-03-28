@@ -64,7 +64,8 @@ RUN cd "squid-${SQUID_VERSION}" \
         --with-default-user=squid \
         --disable-strict-error-checking \
     && make -j"$(nproc)" \
-    && make install DESTDIR=/install
+    && make install DESTDIR=/install \
+    && rm -rf /install/var/run
 
 # ---------- stage 2: runtime ----------------------------------------------
 FROM debian:bookworm-slim
