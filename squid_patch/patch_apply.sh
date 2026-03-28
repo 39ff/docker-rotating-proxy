@@ -159,7 +159,8 @@ if marker_idx > pos:
         content = content[:line_start] + validation + content[line_start:]
         print("    Inserted SOCKS+originserver validation after option parsing loop")
 else:
-    print("WARNING: Could not insert originserver validation", file=sys.stderr)
+    print("ERROR: Could not insert originserver validation", file=sys.stderr)
+    sys.exit(1)
 
 with open(filepath, 'w') as f:
     f.write(content)
@@ -295,7 +296,8 @@ socks_tunnel_hook = r'''
                 sp->socks_user ? std::string(sp->socks_user) : std::string(),
                 sp->socks_pass ? std::string(sp->socks_pass) : std::string())) {
             debugs(26, 2, "SOCKS tunnel negotiation FAILED for " << sp->host);
-            conn->close();
+            saveError(new ErrorState(ERR_CONNECT_FAIL, Http::scBadGateway, request.getRaw(), al));
+            retryOrBail("SOCKS negotiation failed");
             return;
         }
         debugs(26, 3, "SOCKS tunnel negotiation OK for " << sp->host);
@@ -336,6 +338,7 @@ echo "==> All patches applied successfully"
 echo ""
 echo "Modified files:"
 echo "  - src/CachePeer.h            (added socks_type/user/pass fields)"
+echo "  - src/CachePeer.cc           (added socks_user/pass cleanup in destructor)"
 echo "  - src/cache_cf.cc            (added socks4/socks5 option parsing)"
 echo "  - src/FwdState.cc            (SOCKS negotiation in dispatch())"
 echo "  - src/tunnel.cc              (SOCKS negotiation in connectDone())"
