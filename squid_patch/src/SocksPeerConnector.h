@@ -38,8 +38,11 @@ static inline bool syncSend(int fd, const void *buf, size_t len)
     size_t sent = 0;
     while (sent < len) {
         ssize_t n = ::send(fd, p + sent, len - sent, MSG_NOSIGNAL);
-        if (n <= 0)
+        if (n < 0) {
+            if (errno == EINTR) continue;
             return false;
+        }
+        if (n == 0) return false;
         sent += static_cast<size_t>(n);
     }
     return true;
@@ -51,8 +54,11 @@ static inline bool syncRecv(int fd, void *buf, size_t len)
     size_t got = 0;
     while (got < len) {
         ssize_t n = ::recv(fd, p + got, len - got, 0);
-        if (n <= 0)
+        if (n < 0) {
+            if (errno == EINTR) continue;
             return false;
+        }
+        if (n == 0) return false;
         got += static_cast<size_t>(n);
     }
     return true;
@@ -172,8 +178,8 @@ static inline bool socks5Connect(int fd,
         if (!syncRecv(fd, aResp, 2))
             return false;
 
-        if (aResp[1] != 0x00)
-            return false;   /* auth failed */
+        if (aResp[0] != 0x01 || aResp[1] != 0x00)
+            return false;   /* auth failed or wrong sub-negotiation version */
 
     } else if (gResp[1] == 0xFF) {
         return false;       /* no acceptable method */
@@ -277,7 +283,13 @@ static inline bool negotiate(int fd, SocksPeerType type,
     if (fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) < 0)
         return false;
 
-    /* set a 10 s timeout so we don't hang forever */
+    /* save original timeouts and set a 10 s limit for the handshake */
+    struct timeval origRecvTv = {0, 0}, origSendTv = {0, 0};
+    socklen_t tvLen = sizeof(struct timeval);
+    getsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &origRecvTv, &tvLen);
+    tvLen = sizeof(struct timeval);
+    getsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &origSendTv, &tvLen);
+
     struct timeval tv;
     tv.tv_sec  = 10;
     tv.tv_usec = 0;
@@ -290,12 +302,10 @@ static inline bool negotiate(int fd, SocksPeerType type,
     else if (type == SOCKS_V5)
         ok = socks5Connect(fd, targetHost, targetPort, user, pass);
 
-    /* restore non-blocking + clear timeouts */
+    /* restore original flags and timeouts */
     fcntl(fd, F_SETFL, flags);
-    tv.tv_sec = 0;
-    tv.tv_usec = 0;
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &origRecvTv, sizeof(origRecvTv));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &origSendTv, sizeof(origSendTv));
 
     return ok;
 }

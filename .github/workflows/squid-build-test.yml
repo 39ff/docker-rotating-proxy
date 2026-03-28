@@ -250,12 +250,17 @@ jobs:
             let logs = '';
             try { logs = execSync('docker logs squid-test 2>&1', {encoding: 'utf8', maxBuffer: 50*1024}); } catch(e) { logs = e.stdout || e.message; }
             const body = `### E2E Test Squid Logs\n\`\`\`\n${logs.slice(-3000)}\n\`\`\``;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: 30,
-              body: body
-            });
+            const issueNumber = context.issue.number;
+            if (!issueNumber) {
+              console.log('No PR context; skipping comment.');
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: body
+              });
+            }
 
       - name: Collect logs
         if: always()
@@ -403,12 +408,17 @@ jobs:
             let logs = '';
             try { logs = execSync('docker logs squid-auth 2>&1', {encoding: 'utf8', maxBuffer: 50*1024}); } catch(e) { logs = e.stdout || e.message; }
             const body = `### Auth Test Squid Logs\n\`\`\`\n${logs.slice(-3000)}\n\`\`\``;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: 30,
-              body: body
-            });
+            const issueNumber = context.issue.number;
+            if (!issueNumber) {
+              console.log('No PR context; skipping comment.');
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: body
+              });
+            }
 
       - name: Collect logs
         if: always()

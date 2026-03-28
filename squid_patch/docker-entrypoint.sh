@@ -15,5 +15,17 @@ chown -R squid:squid /var/cache/squid /var/log/squid /var/run/squid 2>/dev/null 
 # Remove stale PID file left by squid -z (created as root)
 rm -f /var/run/squid.pid /var/run/squid/squid.pid 2>/dev/null || true
 
-echo "Starting Squid with config: ${SQUID_CONFIG_FILE}"
-exec gosu squid squid -N -f "${SQUID_CONFIG_FILE}" "$@"
+# Support both direct squid invocation and arbitrary commands.
+# If the first argument is "squid", drop it to avoid "squid squid ..." duplication.
+if [ "$#" -gt 0 ] && [ "$1" = "squid" ]; then
+    shift
+fi
+
+# If there are no arguments, or the first arg starts with "-", treat them as squid options.
+if [ "$#" -eq 0 ] || [ "${1#-}" != "$1" ]; then
+    echo "Starting Squid with config: ${SQUID_CONFIG_FILE}"
+    exec gosu squid squid -N -f "${SQUID_CONFIG_FILE}" "$@"
+fi
+
+# Otherwise, run the provided command as-is (e.g., a shell or another tool).
+exec "$@"

@@ -150,6 +150,12 @@ validation = '''
     if (p->socks_type && !p->options.originserver)
         throw TextException(ToSBuf("cache_peer ", *p, ": socks4/socks5 requires the originserver option"), Here());
 
+    /* Validate: socks-user/socks-pass only valid with socks5 and must be set together */
+    if (p->socks_type != 5 && (p->socks_user || p->socks_pass))
+        throw TextException(ToSBuf("cache_peer ", *p, ": socks-user/socks-pass options require socks5"), Here());
+    if (p->socks_type == 5 && ((!p->socks_user) != (!p->socks_pass)))
+        throw TextException(ToSBuf("cache_peer ", *p, ": socks-user and socks-pass must both be set or both omitted"), Here());
+
 '''
 marker = 'findCachePeerByName'
 marker_idx = content.find(marker, pos)
