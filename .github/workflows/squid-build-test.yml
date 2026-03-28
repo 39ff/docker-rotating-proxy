@@ -206,36 +206,60 @@ jobs:
           fi
           echo "=== Early Squid logs ==="
           docker logs squid-test 2>&1 || true
-          echo "Waiting for Squid to accept connections..."
-          READY=0
-          for i in $(seq 1 30); do
-            if curl -sf -o /dev/null -w '%{http_code}' -x http://127.0.0.1:3128 http://127.0.0.1:18080/ip 2>/dev/null; then
-              echo "Squid is ready after ${i}s"
-              READY=1
-              break
+
+      - name: Wait for Squid to listen
+        run: |
+          echo "Waiting for Squid to listen on port 3128..."
+          for i in $(seq 1 15); do
+            if bash -c 'echo > /dev/tcp/127.0.0.1/3128' 2>/dev/null; then
+              echo "Squid is listening after ${i}s"
+              exit 0
             fi
             sleep 1
           done
-          if [ "$READY" -eq 0 ]; then
-            echo "ERROR: Squid failed to respond within 30 seconds"
-            docker logs squid-test 2>&1 || true
-            exit 1
-          fi
+          echo "ERROR: Squid never started listening"
+          docker logs squid-test 2>&1 || true
+          exit 1
+
+      - name: Verify HTTP server is still up
+        run: curl -sf http://127.0.0.1:18080/ip
 
       - name: Test HTTP request through SOCKS5 peer
         run: |
-          RESPONSE=$(curl -v -x http://127.0.0.1:3128 http://127.0.0.1:18080/ip 2>&1)
-          echo "Response: ${RESPONSE}"
-          echo "${RESPONSE}" | grep -q "test" || { echo "FAIL: unexpected response"; exit 1; }
+          echo "--- Attempting proxy request ---"
+          HTTP_CODE=$(curl -s -o /tmp/proxy-response.txt -w '%{http_code}' --max-time 15 -x http://127.0.0.1:3128 http://127.0.0.1:18080/ip 2>/tmp/proxy-stderr.txt || true)
+          echo "HTTP status: ${HTTP_CODE}"
+          echo "Response body:"
+          cat /tmp/proxy-response.txt || true
+          echo ""
+          echo "Curl stderr:"
+          cat /tmp/proxy-stderr.txt || true
+          echo ""
+          echo "=== Squid logs after request ==="
+          docker logs squid-test 2>&1 | tail -30 || true
+          echo ""
+          # Now assert
+          [ "${HTTP_CODE}" = "200" ] || { echo "FAIL: expected 200, got ${HTTP_CODE}"; exit 1; }
+          grep -q "test" /tmp/proxy-response.txt || { echo "FAIL: unexpected response body"; exit 1; }
           echo "--- HTTP via SOCKS5 OK ---"
 
-      - name: Show Squid logs on failure
-        if: failure()
+      - name: Collect logs
+        if: always()
         run: |
-          echo "=== Squid logs ==="
-          docker logs squid-test 2>&1 || true
-          echo "=== SOCKS5 test server logs ==="
-          docker logs socks5-server 2>&1 || true
+          mkdir -p /tmp/test-logs
+          docker logs squid-test > /tmp/test-logs/squid.log 2>&1 || true
+          docker logs socks5-server > /tmp/test-logs/socks5.log 2>&1 || true
+          cp /tmp/squid-conf/squid.conf /tmp/test-logs/ 2>/dev/null || true
+          cp /tmp/proxy-response.txt /tmp/test-logs/ 2>/dev/null || true
+          cp /tmp/proxy-stderr.txt /tmp/test-logs/ 2>/dev/null || true
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-logs
+          path: /tmp/test-logs/
+          retention-days: 3
 
       - name: Cleanup
         if: always()
@@ -320,36 +344,58 @@ jobs:
           fi
           echo "=== Early Squid logs ==="
           docker logs squid-auth 2>&1 || true
-          echo "Waiting for Squid to accept connections..."
-          READY=0
-          for i in $(seq 1 30); do
-            if curl -sf -o /dev/null -w '%{http_code}' -x http://127.0.0.1:3128 http://127.0.0.1:18081/ip 2>/dev/null; then
-              echo "Squid ready after ${i}s"
-              READY=1
-              break
+
+      - name: Wait for Squid to listen
+        run: |
+          for i in $(seq 1 15); do
+            if bash -c 'echo > /dev/tcp/127.0.0.1/3128' 2>/dev/null; then
+              echo "Squid is listening after ${i}s"
+              exit 0
             fi
             sleep 1
           done
-          if [ "$READY" -eq 0 ]; then
-            echo "ERROR: Squid failed to respond within 30 seconds"
-            docker logs squid-auth 2>&1 || true
-            exit 1
-          fi
+          echo "ERROR: Squid never started listening"
+          docker logs squid-auth 2>&1 || true
+          exit 1
+
+      - name: Verify HTTP server is still up
+        run: curl -sf http://127.0.0.1:18081/ip
 
       - name: Test HTTP through authenticated SOCKS5
         run: |
-          RESPONSE=$(curl -v -x http://127.0.0.1:3128 http://127.0.0.1:18081/ip 2>&1)
-          echo "Response: ${RESPONSE}"
-          echo "${RESPONSE}" | grep -q "test" || { echo "FAIL"; exit 1; }
+          echo "--- Attempting proxy request ---"
+          HTTP_CODE=$(curl -s -o /tmp/proxy-response.txt -w '%{http_code}' --max-time 15 -x http://127.0.0.1:3128 http://127.0.0.1:18081/ip 2>/tmp/proxy-stderr.txt || true)
+          echo "HTTP status: ${HTTP_CODE}"
+          echo "Response body:"
+          cat /tmp/proxy-response.txt || true
+          echo ""
+          echo "Curl stderr:"
+          cat /tmp/proxy-stderr.txt || true
+          echo ""
+          echo "=== Squid logs after request ==="
+          docker logs squid-auth 2>&1 | tail -30 || true
+          echo ""
+          [ "${HTTP_CODE}" = "200" ] || { echo "FAIL: expected 200, got ${HTTP_CODE}"; exit 1; }
+          grep -q "test" /tmp/proxy-response.txt || { echo "FAIL: unexpected body"; exit 1; }
           echo "--- HTTP via SOCKS5 auth OK ---"
 
-      - name: Show logs on failure
-        if: failure()
+      - name: Collect logs
+        if: always()
         run: |
-          echo "=== Squid logs ==="
-          docker logs squid-auth 2>&1 || true
-          echo "=== SOCKS5 auth server logs ==="
-          docker logs socks5-auth 2>&1 || true
+          mkdir -p /tmp/test-logs-auth
+          docker logs squid-auth > /tmp/test-logs-auth/squid.log 2>&1 || true
+          docker logs socks5-auth > /tmp/test-logs-auth/socks5.log 2>&1 || true
+          cp /tmp/squid-conf-auth/squid.conf /tmp/test-logs-auth/ 2>/dev/null || true
+          cp /tmp/proxy-response.txt /tmp/test-logs-auth/ 2>/dev/null || true
+          cp /tmp/proxy-stderr.txt /tmp/test-logs-auth/ 2>/dev/null || true
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-test-logs
+          path: /tmp/test-logs-auth/
+          retention-days: 3
 
       - name: Cleanup
         if: always()
