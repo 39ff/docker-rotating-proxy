@@ -81,7 +81,6 @@ jobs:
         run: |
           cat > /tmp/squid-socks5.conf <<'CONF'
           http_port 3128
-          acl all src 0.0.0.0/0
           http_access allow all
           never_direct allow all
           cache_peer 127.0.0.1 parent 1080 0 no-query no-digest round-robin proxy-only originserver name=test_socks5 socks5 socks-user=testuser socks-pass=testpass
@@ -98,7 +97,6 @@ jobs:
         run: |
           cat > /tmp/squid-socks4.conf <<'CONF'
           http_port 3128
-          acl all src 0.0.0.0/0
           http_access allow all
           never_direct allow all
           cache_peer 127.0.0.1 parent 1080 0 no-query no-digest round-robin proxy-only originserver name=test_socks4 socks4
@@ -115,7 +113,6 @@ jobs:
         run: |
           cat > /tmp/squid-multi.conf <<'CONF'
           http_port 3128
-          acl all src 0.0.0.0/0
           http_access allow all
           never_direct allow all
           cache_peer 10.0.0.1 parent 1080 0 no-query no-digest round-robin proxy-only originserver name=socks1 socks5 socks-user=user1 socks-pass=pass1
@@ -177,7 +174,6 @@ jobs:
           mkdir -p /tmp/squid-conf
           cat > /tmp/squid-conf/squid.conf <<CONF
           http_port 3128
-          acl all src 0.0.0.0/0
           http_access allow all
           never_direct allow all
           server_persistent_connections off
@@ -185,23 +181,18 @@ jobs:
           cache_peer 127.0.0.1 parent 11080 0 no-query no-digest connect-fail-limit=2 connect-timeout=8 round-robin proxy-only originserver name=socks_test socks5
           visible_hostname test
           cache deny all
-          access_log stdio:/proc/self/fd/1 combined
+          cache_log /var/log/squid/cache.log
+          access_log stdio:/var/log/squid/access.log combined
           CONF
           echo "--- Config ---"
           cat /tmp/squid-conf/squid.conf
 
       - name: Start Squid with SOCKS5 peer
         run: |
-          # Bypass entrypoint - run squid directly to isolate issues
           docker run -d --name squid-test --network host \
             -v /tmp/squid-conf:/etc/squid/conf.d:ro \
-            --entrypoint /bin/sh \
-            ${{ env.SQUID_IMAGE }} \
-            -c '
-              squid -z -N -f /etc/squid/conf.d/squid.conf 2>&1 || true
-              echo "=== Starting Squid ==="
-              exec squid -N -f /etc/squid/conf.d/squid.conf 2>&1
-            '
+            -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
+            ${{ env.SQUID_IMAGE }}
           sleep 5
           echo "=== Container status ==="
           docker ps -a --filter name=squid-test --format '{{.Status}}'
@@ -337,7 +328,6 @@ jobs:
           mkdir -p /tmp/squid-conf-auth
           cat > /tmp/squid-conf-auth/squid.conf <<CONF
           http_port 3128
-          acl all src 0.0.0.0/0
           http_access allow all
           never_direct allow all
           server_persistent_connections off
@@ -345,7 +335,8 @@ jobs:
           cache_peer 127.0.0.1 parent 11081 0 no-query no-digest connect-fail-limit=2 connect-timeout=8 round-robin proxy-only originserver name=socks_auth socks5 socks-user=testuser socks-pass=testpass
           visible_hostname test
           cache deny all
-          access_log stdio:/proc/self/fd/1 combined
+          cache_log /var/log/squid/cache.log
+          access_log stdio:/var/log/squid/access.log combined
           CONF
           echo "--- Config ---"
           cat /tmp/squid-conf-auth/squid.conf
@@ -354,13 +345,8 @@ jobs:
         run: |
           docker run -d --name squid-auth --network host \
             -v /tmp/squid-conf-auth:/etc/squid/conf.d:ro \
-            --entrypoint /bin/sh \
-            ${{ env.SQUID_IMAGE }} \
-            -c '
-              squid -z -N -f /etc/squid/conf.d/squid.conf 2>&1 || true
-              echo "=== Starting Squid ==="
-              exec squid -N -f /etc/squid/conf.d/squid.conf 2>&1
-            '
+            -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
+            ${{ env.SQUID_IMAGE }}
           sleep 5
           echo "=== Container status ==="
           docker ps -a --filter name=squid-auth --format '{{.Status}}'
