@@ -190,6 +190,30 @@ jobs:
           echo "--- Config ---"
           cat /tmp/squid-conf/squid.conf
 
+      - name: Diagnose Squid startup
+        run: |
+          echo "=== Parse test ==="
+          docker run --rm --network host \
+            -v /tmp/squid-conf:/etc/squid/conf.d:ro \
+            --entrypoint squid \
+            ${{ env.SQUID_IMAGE }} \
+            -k parse -f /etc/squid/conf.d/squid.conf 2>&1 || true
+          echo ""
+          echo "=== Dry-run entrypoint ==="
+          docker run --rm --network host \
+            -v /tmp/squid-conf:/etc/squid/conf.d:ro \
+            -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
+            --entrypoint /bin/sh \
+            ${{ env.SQUID_IMAGE }} \
+            -c '
+              set -x
+              cat "$SQUID_CONFIG_FILE"
+              squid -z -N -f "$SQUID_CONFIG_FILE" 2>&1 || echo "squid -z exit: $?"
+              ls -la /var/cache/squid/ /var/log/squid/ /var/run/squid/ 2>&1
+              chown -R squid:squid /var/cache/squid /var/log/squid /var/run/squid 2>&1 || true
+              timeout 5 gosu squid squid -N -X -d5 -f "$SQUID_CONFIG_FILE" 2>&1 || echo "squid exit: $?"
+            '
+
       - name: Start Squid with SOCKS5 peer
         run: |
           docker run -d --name squid-test --network host \
@@ -327,6 +351,21 @@ jobs:
           CONF
           echo "--- Config ---"
           cat /tmp/squid-conf-auth/squid.conf
+
+      - name: Diagnose Squid startup
+        run: |
+          echo "=== Dry-run entrypoint ==="
+          docker run --rm --network host \
+            -v /tmp/squid-conf-auth:/etc/squid/conf.d:ro \
+            -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
+            --entrypoint /bin/sh \
+            ${{ env.SQUID_IMAGE }} \
+            -c '
+              set -x
+              squid -z -N -f "$SQUID_CONFIG_FILE" 2>&1 || echo "squid -z exit: $?"
+              chown -R squid:squid /var/cache/squid /var/log/squid /var/run/squid 2>&1 || true
+              timeout 5 gosu squid squid -N -X -d5 -f "$SQUID_CONFIG_FILE" 2>&1 || echo "squid exit: $?"
+            '
 
       - name: Start Squid with SOCKS5 auth peer
         run: |
