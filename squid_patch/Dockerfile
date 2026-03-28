@@ -30,9 +30,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Download and extract Squid source (pinned version)
+# Download and extract Squid source (pinned version + integrity check)
+ARG SQUID_TAR_SHA256=0b07b187e723f04770dd25beb89aec12030a158696aa8892d87c8b26853408a7
 RUN wget -q "https://www.squid-cache.org/Versions/v6/squid-${SQUID_VERSION}.tar.xz" \
         -O squid.tar.xz \
+    && echo "${SQUID_TAR_SHA256}  squid.tar.xz" | sha256sum -c - \
     && tar xf squid.tar.xz \
     && rm squid.tar.xz
 

@@ -79,54 +79,57 @@ anchor = sys.argv[2]
 with open(filepath, 'r') as f:
     content = f.read()
 
-# Use xstrdup for string allocation (Squid's malloc wrapper)
-socks_code = '''
-        } else if (!strcmp(token, "socks4")) {
+# The code to insert. Starts with " else if" (no leading "}") and closes
+# the final branch with "}".  The insertion point is right after the "}"
+# that closes the anchor's if-block, so " else if" continues the chain.
+socks_code = ''' else if (!strcmp(token, "socks4")) {
             p->socks_type = 4;
+            if (!p->options.originserver)
+                debugs(3, DBG_CRITICAL, "WARNING: socks4 requires originserver option on cache_peer " << p->host);
         } else if (!strcmp(token, "socks5")) {
             p->socks_type = 5;
+            if (!p->options.originserver)
+                debugs(3, DBG_CRITICAL, "WARNING: socks5 requires originserver option on cache_peer " << p->host);
         } else if (!strncmp(token, "socks-user=", 11)) {
             safe_free(p->socks_user);
             p->socks_user = xstrdup(token + 11);
         } else if (!strncmp(token, "socks-pass=", 11)) {
             safe_free(p->socks_pass);
             p->socks_pass = xstrdup(token + 11);
-'''
+        }'''
 
-# Find the anchor in a strcmp context and insert after its closing brace
-pattern = re.compile(
-    r'(else\s+if\s*\(!strcmp\(token,\s*"' + re.escape(anchor) + r'"\)\)\s*\{[^}]*\})',
-    re.DOTALL
-)
+# Find the anchor in a strcmp/strncmp context
+# Try matching "else if" variant first (most options), then plain "if" (first option)
+for pat_template in [
+    r'else\s+if\s*\(!(?:strcmp|strncmp)\(token,\s*"' + re.escape(anchor) + r'"',
+    r'if\s*\(!(?:strcmp|strncmp)\(token,\s*"' + re.escape(anchor) + r'"',
+]:
+    pat = re.compile(pat_template)
+    match = pat.search(content)
+    if match:
+        break
 
-match = pattern.search(content)
-if match:
-    insert_pos = match.end()
-    content = content[:insert_pos] + socks_code + content[insert_pos:]
-    with open(filepath, 'w') as f:
-        f.write(content)
-    print(f"    Inserted SOCKS parsing after '{anchor}' block")
-else:
-    # Fallback: brace-counting approach
-    simple = f'"{anchor}"'
-    idx = content.find(simple)
-    if idx < 0:
-        print(f"ERROR: Could not find '{anchor}' in cache_cf.cc", file=sys.stderr)
-        sys.exit(1)
-    brace_start = content.find('{', idx)
-    if brace_start < 0:
-        print("ERROR: Could not find opening brace", file=sys.stderr)
-        sys.exit(1)
-    depth = 1
-    pos = brace_start + 1
-    while pos < len(content) and depth > 0:
-        if content[pos] == '{': depth += 1
-        elif content[pos] == '}': depth -= 1
-        pos += 1
-    content = content[:pos] + socks_code + content[pos:]
-    with open(filepath, 'w') as f:
-        f.write(content)
-    print(f"    Inserted SOCKS parsing (fallback) after '{anchor}' block")
+if not match:
+    print(f"ERROR: Could not find '{anchor}' in cache_cf.cc", file=sys.stderr)
+    sys.exit(1)
+
+# From the match position, find the opening brace and count to the closing brace
+idx = match.start()
+brace_start = content.find('{', idx)
+if brace_start < 0:
+    print("ERROR: Could not find opening brace", file=sys.stderr)
+    sys.exit(1)
+depth = 1
+pos = brace_start + 1
+while pos < len(content) and depth > 0:
+    if content[pos] == '{': depth += 1
+    elif content[pos] == '}': depth -= 1
+    pos += 1
+# pos is now right after the closing "}" of the anchor block
+content = content[:pos] + socks_code + content[pos:]
+with open(filepath, 'w') as f:
+    f.write(content)
+print(f"    Inserted SOCKS parsing after '{anchor}' block")
 PYEOF
 fi
 
@@ -139,10 +142,10 @@ FWD_STATE="${SQUID_SRC}/src/FwdState.cc"
 echo "==> Patching ${FWD_STATE}"
 [ -f "${FWD_STATE}" ] || die "FwdState.cc not found"
 
-# Add include – after the first #include line (squid.h is always first)
+# Add include AFTER squid.h (squid.h MUST be the first include in every .cc)
 if ! grep -q 'SocksPeerConnector.h' "${FWD_STATE}"; then
-    sed -i '0,/#include/{s/#include/#include "SocksPeerConnector.h"\n#include/}' "${FWD_STATE}"
-    # Verify it was inserted
+    sed -i '/#include "squid.h"/a\
+#include "SocksPeerConnector.h"' "${FWD_STATE}"
     grep -q 'SocksPeerConnector.h' "${FWD_STATE}" || die "Failed to add include to FwdState.cc"
 fi
 
@@ -155,11 +158,11 @@ filepath = sys.argv[1]
 with open(filepath, 'r') as f:
     content = f.read()
 
-# Squid 6.x API:
+# Squid 6.10 API:
 #   serverConnection() returns Comm::ConnectionPointer const &
 #   ->getPeer() returns CachePeer*
 #   ->fd is int (public member of Comm::Connection)
-#   request->url.host() returns SBuf (use .c_str() for const char*)
+#   request->url.host() returns const char*
 #   request->url.port() returns unsigned short
 #   retryOrBail() is a private method of FwdState
 socks_hook = r'''
@@ -173,7 +176,7 @@ socks_hook = r'''
             if (!SocksPeerConnector::negotiate(
                     serverConnection()->fd,
                     static_cast<SocksPeerType>(sp->socks_type),
-                    std::string(request->url.host().c_str()),
+                    std::string(request->url.host()),
                     targetPort,
                     sp->socks_user ? std::string(sp->socks_user) : std::string(),
                     sp->socks_pass ? std::string(sp->socks_pass) : std::string())) {
@@ -189,7 +192,6 @@ socks_hook = r'''
 
 inserted = False
 
-# Pattern: void FwdState::dispatch()  {
 for pat in [
     r'(void\s+FwdState::dispatch\s*\(\s*\)\s*\{)',
     r'(FwdState::dispatch\s*\(\s*\)\s*\n?\s*\{)',
@@ -221,9 +223,10 @@ TUNNEL_CC="${SQUID_SRC}/src/tunnel.cc"
 echo "==> Patching ${TUNNEL_CC}"
 [ -f "${TUNNEL_CC}" ] || die "tunnel.cc not found"
 
-# Add include – after the first #include line
+# Add include AFTER squid.h
 if ! grep -q 'SocksPeerConnector.h' "${TUNNEL_CC}"; then
-    sed -i '0,/#include/{s/#include/#include "SocksPeerConnector.h"\n#include/}' "${TUNNEL_CC}"
+    sed -i '/#include "squid.h"/a\
+#include "SocksPeerConnector.h"' "${TUNNEL_CC}"
     grep -q 'SocksPeerConnector.h' "${TUNNEL_CC}" || die "Failed to add include to tunnel.cc"
 fi
 
@@ -236,14 +239,12 @@ filepath = sys.argv[1]
 with open(filepath, 'r') as f:
     content = f.read()
 
-# tunnel.cc API (Squid 6.x):
-#   TunnelStateData has: server.conn (Comm::ConnectionPointer), request (HttpRequestPointer)
-#   connectDone(const Comm::ConnectionPointer &conn, ...) - called after TCP connect
+# tunnel.cc API (Squid 6.10):
+#   TunnelStateData has: server.conn, request (HttpRequestPointer)
+#   connectDone(const Comm::ConnectionPointer &conn, ...) - after TCP connect
 #   conn->getPeer() returns CachePeer*
 #   conn->fd is int
-#   For originserver peers, connectDone goes to notePeerReadyToShovel() (shovels data)
-#   For non-origin peers, connectDone goes to connectToPeer() (sends HTTP CONNECT)
-#   SOCKS peers use originserver, so after SOCKS negotiation the tunnel is ready.
+#   request->url.host() returns const char*
 socks_tunnel_hook = r'''
     /* SOCKS peer: negotiate tunnel right after TCP connect */
     if (conn->getPeer() && conn->getPeer()->socks_type) {
@@ -255,7 +256,7 @@ socks_tunnel_hook = r'''
         if (!SocksPeerConnector::negotiate(
                 conn->fd,
                 static_cast<SocksPeerType>(sp->socks_type),
-                std::string(request->url.host().c_str()),
+                std::string(request->url.host()),
                 targetPort,
                 sp->socks_user ? std::string(sp->socks_user) : std::string(),
                 sp->socks_pass ? std::string(sp->socks_pass) : std::string())) {
@@ -270,12 +271,10 @@ socks_tunnel_hook = r'''
 
 inserted = False
 
-# Target: TunnelStateData::connectDone  or  tunnelConnectDone
 for pat in [
     r'(void\s+TunnelStateData::connectDone\s*\([^)]*\)\s*\{)',
     r'(TunnelStateData::connectDone\s*\([^)]*\)\s*\n?\s*\{)',
     r'(void\s+tunnelConnectDone\s*\([^)]*\)\s*\{)',
-    # Fallback: connectToPeer
     r'(void\s+TunnelStateData::connectToPeer\s*\([^)]*\)\s*\{)',
     r'(TunnelStateData::connectToPeer\s*\([^)]*\)\s*\n?\s*\{)',
 ]:

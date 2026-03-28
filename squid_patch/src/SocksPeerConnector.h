@@ -72,7 +72,12 @@ static inline bool socks4Connect(int fd,
         addr.s_addr = htonl(0x00000001);
     }
 
+    /* Bounds check: 8 (header) + userid + 1 (null) + hostname + 1 (null) */
+    const size_t needed = 8 + user.size() + 1 + (useSocks4a ? host.size() + 1 : 0);
     uint8_t req[600];
+    if (needed > sizeof(req))
+        return false;
+
     size_t pos = 0;
 
     req[pos++] = 0x04;                          /* VN  = 4             */
@@ -182,10 +187,27 @@ static inline bool socks5Connect(int fd,
     connReq[cPos++] = 0x05;   /* VER                  */
     connReq[cPos++] = 0x01;   /* CMD = CONNECT        */
     connReq[cPos++] = 0x00;   /* RSV                  */
-    connReq[cPos++] = 0x03;   /* ATYP = DOMAINNAME    */
-    connReq[cPos++] = static_cast<uint8_t>(host.length());
-    std::memcpy(connReq + cPos, host.c_str(), host.length());
-    cPos += host.length();
+
+    /* Detect address type: IPv4, IPv6, or domain name */
+    struct in_addr ipv4;
+    struct in6_addr ipv6;
+    if (inet_pton(AF_INET, host.c_str(), &ipv4) == 1) {
+        connReq[cPos++] = 0x01;   /* ATYP = IPv4 */
+        std::memcpy(connReq + cPos, &ipv4, sizeof(ipv4));
+        cPos += sizeof(ipv4);
+    } else if (inet_pton(AF_INET6, host.c_str(), &ipv6) == 1) {
+        connReq[cPos++] = 0x04;   /* ATYP = IPv6 */
+        std::memcpy(connReq + cPos, &ipv6, sizeof(ipv6));
+        cPos += sizeof(ipv6);
+    } else {
+        if (host.length() > 255)
+            return false;
+        connReq[cPos++] = 0x03;   /* ATYP = DOMAINNAME    */
+        connReq[cPos++] = static_cast<uint8_t>(host.length());
+        std::memcpy(connReq + cPos, host.c_str(), host.length());
+        cPos += host.length();
+    }
+
     connReq[cPos++] = static_cast<uint8_t>((port >> 8) & 0xFF);
     connReq[cPos++] = static_cast<uint8_t>(port & 0xFF);
 
