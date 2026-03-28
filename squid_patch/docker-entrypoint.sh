@@ -6,7 +6,7 @@ SQUID_CONFIG_FILE="${SQUID_CONFIG_FILE:-/etc/squid/squid.conf}"
 # Initialize cache directory if needed
 if [ ! -d /var/cache/squid/00 ]; then
     echo "Initializing Squid cache..."
-    squid -z -N -f "${SQUID_CONFIG_FILE}" 2>/dev/null || true
+    squid -z -N -f "${SQUID_CONFIG_FILE}" 2>&1 || echo "Warning: squid -z failed (may be OK if cache is unused)"
 fi
 
 # Ensure proper ownership

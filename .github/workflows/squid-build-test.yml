@@ -190,37 +190,13 @@ jobs:
           echo "--- Config ---"
           cat /tmp/squid-conf/squid.conf
 
-      - name: Diagnose Squid startup
-        run: |
-          echo "=== Parse test ==="
-          docker run --rm --network host \
-            -v /tmp/squid-conf:/etc/squid/conf.d:ro \
-            --entrypoint squid \
-            ${{ env.SQUID_IMAGE }} \
-            -k parse -f /etc/squid/conf.d/squid.conf 2>&1 || true
-          echo ""
-          echo "=== Dry-run entrypoint ==="
-          docker run --rm --network host \
-            -v /tmp/squid-conf:/etc/squid/conf.d:ro \
-            -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
-            --entrypoint /bin/sh \
-            ${{ env.SQUID_IMAGE }} \
-            -c '
-              set -x
-              cat "$SQUID_CONFIG_FILE"
-              squid -z -N -f "$SQUID_CONFIG_FILE" 2>&1 || echo "squid -z exit: $?"
-              ls -la /var/cache/squid/ /var/log/squid/ /var/run/squid/ 2>&1
-              chown -R squid:squid /var/cache/squid /var/log/squid /var/run/squid 2>&1 || true
-              timeout 5 gosu squid squid -N -X -d5 -f "$SQUID_CONFIG_FILE" 2>&1 || echo "squid exit: $?"
-            '
-
       - name: Start Squid with SOCKS5 peer
         run: |
           docker run -d --name squid-test --network host \
             -v /tmp/squid-conf:/etc/squid/conf.d:ro \
             -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
             ${{ env.SQUID_IMAGE }}
-          sleep 3
+          sleep 5
           echo "=== Container status ==="
           docker ps -a --filter name=squid-test --format '{{.Status}}'
           if ! docker ps --filter name=squid-test --filter status=running -q | grep -q .; then
@@ -234,7 +210,7 @@ jobs:
       - name: Wait for Squid to listen
         run: |
           echo "Waiting for Squid to listen on port 3128..."
-          for i in $(seq 1 15); do
+          for i in $(seq 1 30); do
             if bash -c 'echo > /dev/tcp/127.0.0.1/3128' 2>/dev/null; then
               echo "Squid is listening after ${i}s"
               exit 0
@@ -352,28 +328,13 @@ jobs:
           echo "--- Config ---"
           cat /tmp/squid-conf-auth/squid.conf
 
-      - name: Diagnose Squid startup
-        run: |
-          echo "=== Dry-run entrypoint ==="
-          docker run --rm --network host \
-            -v /tmp/squid-conf-auth:/etc/squid/conf.d:ro \
-            -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
-            --entrypoint /bin/sh \
-            ${{ env.SQUID_IMAGE }} \
-            -c '
-              set -x
-              squid -z -N -f "$SQUID_CONFIG_FILE" 2>&1 || echo "squid -z exit: $?"
-              chown -R squid:squid /var/cache/squid /var/log/squid /var/run/squid 2>&1 || true
-              timeout 5 gosu squid squid -N -X -d5 -f "$SQUID_CONFIG_FILE" 2>&1 || echo "squid exit: $?"
-            '
-
       - name: Start Squid with SOCKS5 auth peer
         run: |
           docker run -d --name squid-auth --network host \
             -v /tmp/squid-conf-auth:/etc/squid/conf.d:ro \
             -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
             ${{ env.SQUID_IMAGE }}
-          sleep 3
+          sleep 5
           echo "=== Container status ==="
           docker ps -a --filter name=squid-auth --format '{{.Status}}'
           if ! docker ps --filter name=squid-auth --filter status=running -q | grep -q .; then
@@ -386,7 +347,7 @@ jobs:
 
       - name: Wait for Squid to listen
         run: |
-          for i in $(seq 1 15); do
+          for i in $(seq 1 30); do
             if bash -c 'echo > /dev/tcp/127.0.0.1/3128' 2>/dev/null; then
               echo "Squid is listening after ${i}s"
               exit 0
