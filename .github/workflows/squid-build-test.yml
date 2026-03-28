@@ -181,6 +181,7 @@ jobs:
           cache_peer 127.0.0.1 parent 11080 0 no-query no-digest connect-fail-limit=2 connect-timeout=8 round-robin proxy-only originserver name=socks_test socks5
           visible_hostname test
           cache deny all
+          pid_filename /var/run/squid/squid.pid
           cache_log /var/log/squid/cache.log
           access_log stdio:/var/log/squid/access.log combined
           CONF
@@ -335,6 +336,7 @@ jobs:
           cache_peer 127.0.0.1 parent 11081 0 no-query no-digest connect-fail-limit=2 connect-timeout=8 round-robin proxy-only originserver name=socks_auth socks5 socks-user=testuser socks-pass=testpass
           visible_hostname test
           cache deny all
+          pid_filename /var/run/squid/squid.pid
           cache_log /var/log/squid/cache.log
           access_log stdio:/var/log/squid/access.log combined
           CONF

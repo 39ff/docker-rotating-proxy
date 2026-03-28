@@ -12,5 +12,8 @@ fi
 # Ensure proper ownership
 chown -R squid:squid /var/cache/squid /var/log/squid /var/run/squid 2>/dev/null || true
 
+# Remove stale PID file left by squid -z (created as root)
+rm -f /var/run/squid.pid /var/run/squid/squid.pid 2>/dev/null || true
+
 echo "Starting Squid with config: ${SQUID_CONFIG_FILE}"
 exec gosu squid squid -N -f "${SQUID_CONFIG_FILE}" "$@"
