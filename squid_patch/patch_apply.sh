@@ -52,6 +52,24 @@ fi
 echo "    CachePeer.h patched OK"
 
 # ---------------------------------------------------------------------------
+# 1b. CachePeer.cc  –  free socks_user / socks_pass in destructor
+# ---------------------------------------------------------------------------
+CACHE_PEER_CC="${SQUID_SRC}/src/CachePeer.cc"
+echo "==> Patching ${CACHE_PEER_CC}"
+[ -f "${CACHE_PEER_CC}" ] || die "CachePeer.cc not found"
+
+if ! grep -q 'socks_user' "${CACHE_PEER_CC}"; then
+    # Insert xfree calls next to existing xfree(login) in the destructor
+    sed -i '/xfree(login);/a\
+\
+    xfree(socks_user);\
+    xfree(socks_pass);' "${CACHE_PEER_CC}"
+    grep -q 'socks_user' "${CACHE_PEER_CC}" || die "Failed to patch CachePeer.cc destructor"
+fi
+
+echo "    CachePeer.cc patched OK"
+
+# ---------------------------------------------------------------------------
 # 2. cache_cf.cc  –  parse socks4 / socks5 / socks-user= / socks-pass=
 # ---------------------------------------------------------------------------
 CACHE_CF="${SQUID_SRC}/src/cache_cf.cc"
@@ -84,12 +102,8 @@ with open(filepath, 'r') as f:
 # that closes the anchor's if-block, so " else if" continues the chain.
 socks_code = ''' else if (!strcmp(token, "socks4")) {
             p->socks_type = 4;
-            if (!p->options.originserver)
-                debugs(3, DBG_CRITICAL, "WARNING: socks4 requires originserver option on cache_peer " << p->host);
         } else if (!strcmp(token, "socks5")) {
             p->socks_type = 5;
-            if (!p->options.originserver)
-                debugs(3, DBG_CRITICAL, "WARNING: socks5 requires originserver option on cache_peer " << p->host);
         } else if (!strncmp(token, "socks-user=", 11)) {
             safe_free(p->socks_user);
             p->socks_user = xstrdup(token + 11);
@@ -127,6 +141,26 @@ while pos < len(content) and depth > 0:
     pos += 1
 # pos is now right after the closing "}" of the anchor block
 content = content[:pos] + socks_code + content[pos:]
+
+# Also add a post-parse validation: socks4/socks5 requires originserver.
+# Options can appear in any order, so we validate after the while loop ends.
+# findCachePeerByName is the first check after the option-parsing loop.
+validation = '''
+    /* Validate: SOCKS peers must use originserver */
+    if (p->socks_type && !p->options.originserver)
+        throw TextException(ToSBuf("cache_peer ", *p, ": socks4/socks5 requires the originserver option"), Here());
+
+'''
+marker = 'findCachePeerByName'
+marker_idx = content.find(marker, pos)
+if marker_idx > pos:
+    line_start = content.rfind('\n', 0, marker_idx)
+    if line_start > 0:
+        content = content[:line_start] + validation + content[line_start:]
+        print("    Inserted SOCKS+originserver validation after option parsing loop")
+else:
+    print("WARNING: Could not insert originserver validation", file=sys.stderr)
+
 with open(filepath, 'w') as f:
     f.write(content)
 print(f"    Inserted SOCKS parsing after '{anchor}' block")
