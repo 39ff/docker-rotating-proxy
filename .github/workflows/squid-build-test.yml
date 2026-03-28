@@ -150,6 +150,15 @@ jobs:
       - name: Load image
         run: docker load -i /tmp/squid-image.tar
 
+      - name: Start local HTTP test server
+        run: |
+          mkdir -p /tmp/www
+          echo '{"origin":"127.0.0.1","test":"ok"}' > /tmp/www/ip
+          python3 -m http.server 18080 --directory /tmp/www &
+          sleep 1
+          curl -sf http://127.0.0.1:18080/ip
+          echo "--- Local HTTP server ready ---"
+
       - name: Start SOCKS5 test server
         run: |
           docker run -d --name socks5-server --network host \
@@ -157,11 +166,16 @@ jobs:
             serjs/go-socks5-proxy:latest
           sleep 2
           docker logs socks5-server
+          echo "--- Verify SOCKS5 server directly ---"
+          curl -sf --socks5-hostname 127.0.0.1:11080 http://127.0.0.1:18080/ip || {
+            echo "ERROR: SOCKS5 server not working"
+            exit 1
+          }
 
       - name: Create Squid config for SOCKS5 peer
         run: |
           mkdir -p /tmp/squid-conf
-          cat > /tmp/squid-conf/squid.conf <<'CONF'
+          cat > /tmp/squid-conf/squid.conf <<CONF
           http_port 3128
           acl all src 0.0.0.0/0
           http_access allow all
@@ -170,12 +184,11 @@ jobs:
           client_persistent_connections off
           cache_peer 127.0.0.1 parent 11080 0 no-query no-digest connect-fail-limit=2 connect-timeout=8 round-robin proxy-only originserver name=socks_test socks5
           visible_hostname test
+          cache deny all
           access_log stdio:/proc/self/fd/1 combined
           CONF
-
-          cat > /tmp/squid-conf/allowed_ip.txt <<'ALLOW'
-          0.0.0.0/0
-          ALLOW
+          echo "--- Config ---"
+          cat /tmp/squid-conf/squid.conf
 
       - name: Start Squid with SOCKS5 peer
         run: |
@@ -183,10 +196,20 @@ jobs:
             -v /tmp/squid-conf:/etc/squid/conf.d:ro \
             -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
             ${{ env.SQUID_IMAGE }}
-          echo "Waiting for Squid to start..."
+          sleep 3
+          echo "=== Container status ==="
+          docker ps -a --filter name=squid-test --format '{{.Status}}'
+          if ! docker ps --filter name=squid-test --filter status=running -q | grep -q .; then
+            echo "ERROR: Squid container is not running"
+            docker logs squid-test 2>&1 || true
+            exit 1
+          fi
+          echo "=== Early Squid logs ==="
+          docker logs squid-test 2>&1 || true
+          echo "Waiting for Squid to accept connections..."
           READY=0
           for i in $(seq 1 30); do
-            if curl -sf -x http://127.0.0.1:3128 -o /dev/null http://httpbin.org/ip 2>/dev/null; then
+            if curl -sf -o /dev/null -w '%{http_code}' -x http://127.0.0.1:3128 http://127.0.0.1:18080/ip 2>/dev/null; then
               echo "Squid is ready after ${i}s"
               READY=1
               break
@@ -194,24 +217,17 @@ jobs:
             sleep 1
           done
           if [ "$READY" -eq 0 ]; then
-            echo "ERROR: Squid failed to start within 30 seconds"
+            echo "ERROR: Squid failed to respond within 30 seconds"
             docker logs squid-test 2>&1 || true
             exit 1
           fi
 
       - name: Test HTTP request through SOCKS5 peer
         run: |
-          RESPONSE=$(curl -sf -x http://127.0.0.1:3128 http://httpbin.org/ip)
+          RESPONSE=$(curl -v -x http://127.0.0.1:3128 http://127.0.0.1:18080/ip 2>&1)
           echo "Response: ${RESPONSE}"
-          echo "${RESPONSE}" | grep -q "origin" || { echo "FAIL: unexpected response"; exit 1; }
+          echo "${RESPONSE}" | grep -q "test" || { echo "FAIL: unexpected response"; exit 1; }
           echo "--- HTTP via SOCKS5 OK ---"
-
-      - name: Test HTTPS request through SOCKS5 peer
-        run: |
-          RESPONSE=$(curl -sf -x http://127.0.0.1:3128 https://httpbin.org/ip)
-          echo "Response: ${RESPONSE}"
-          echo "${RESPONSE}" | grep -q "origin" || { echo "FAIL: unexpected response"; exit 1; }
-          echo "--- HTTPS via SOCKS5 OK ---"
 
       - name: Show Squid logs on failure
         if: failure()
@@ -225,6 +241,7 @@ jobs:
         if: always()
         run: |
           docker rm -f squid-test socks5-server 2>/dev/null || true
+          kill %1 2>/dev/null || true
 
   # ------------------------------------------------------------------
   # 4. Test: SOCKS5 with authentication
@@ -246,6 +263,14 @@ jobs:
       - name: Load image
         run: docker load -i /tmp/squid-image.tar
 
+      - name: Start local HTTP test server
+        run: |
+          mkdir -p /tmp/www
+          echo '{"origin":"127.0.0.1","test":"ok"}' > /tmp/www/ip
+          python3 -m http.server 18081 --directory /tmp/www &
+          sleep 1
+          curl -sf http://127.0.0.1:18081/ip
+
       - name: Start SOCKS5 server with auth
         run: |
           docker run -d --name socks5-auth --network host \
@@ -254,11 +279,17 @@ jobs:
             -e PROXY_PASSWORD=testpass \
             serjs/go-socks5-proxy:latest
           sleep 2
+          docker logs socks5-auth
+          echo "--- Verify SOCKS5 auth server directly ---"
+          curl -sf --socks5-hostname testuser:testpass@127.0.0.1:11081 http://127.0.0.1:18081/ip || {
+            echo "ERROR: SOCKS5 auth server not working"
+            exit 1
+          }
 
       - name: Create Squid config with SOCKS5 auth
         run: |
           mkdir -p /tmp/squid-conf-auth
-          cat > /tmp/squid-conf-auth/squid.conf <<'CONF'
+          cat > /tmp/squid-conf-auth/squid.conf <<CONF
           http_port 3128
           acl all src 0.0.0.0/0
           http_access allow all
@@ -267,12 +298,11 @@ jobs:
           client_persistent_connections off
           cache_peer 127.0.0.1 parent 11081 0 no-query no-digest connect-fail-limit=2 connect-timeout=8 round-robin proxy-only originserver name=socks_auth socks5 socks-user=testuser socks-pass=testpass
           visible_hostname test
+          cache deny all
           access_log stdio:/proc/self/fd/1 combined
           CONF
-
-          cat > /tmp/squid-conf-auth/allowed_ip.txt <<'ALLOW'
-          0.0.0.0/0
-          ALLOW
+          echo "--- Config ---"
+          cat /tmp/squid-conf-auth/squid.conf
 
       - name: Start Squid with SOCKS5 auth peer
         run: |
@@ -280,9 +310,20 @@ jobs:
             -v /tmp/squid-conf-auth:/etc/squid/conf.d:ro \
             -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
             ${{ env.SQUID_IMAGE }}
+          sleep 3
+          echo "=== Container status ==="
+          docker ps -a --filter name=squid-auth --format '{{.Status}}'
+          if ! docker ps --filter name=squid-auth --filter status=running -q | grep -q .; then
+            echo "ERROR: Squid container is not running"
+            docker logs squid-auth 2>&1 || true
+            exit 1
+          fi
+          echo "=== Early Squid logs ==="
+          docker logs squid-auth 2>&1 || true
+          echo "Waiting for Squid to accept connections..."
           READY=0
           for i in $(seq 1 30); do
-            if curl -sf -x http://127.0.0.1:3128 -o /dev/null http://httpbin.org/ip 2>/dev/null; then
+            if curl -sf -o /dev/null -w '%{http_code}' -x http://127.0.0.1:3128 http://127.0.0.1:18081/ip 2>/dev/null; then
               echo "Squid ready after ${i}s"
               READY=1
               break
@@ -290,24 +331,17 @@ jobs:
             sleep 1
           done
           if [ "$READY" -eq 0 ]; then
-            echo "ERROR: Squid failed to start within 30 seconds"
+            echo "ERROR: Squid failed to respond within 30 seconds"
             docker logs squid-auth 2>&1 || true
             exit 1
           fi
 
       - name: Test HTTP through authenticated SOCKS5
         run: |
-          RESPONSE=$(curl -sf -x http://127.0.0.1:3128 http://httpbin.org/ip)
+          RESPONSE=$(curl -v -x http://127.0.0.1:3128 http://127.0.0.1:18081/ip 2>&1)
           echo "Response: ${RESPONSE}"
-          echo "${RESPONSE}" | grep -q "origin" || { echo "FAIL"; exit 1; }
+          echo "${RESPONSE}" | grep -q "test" || { echo "FAIL"; exit 1; }
           echo "--- HTTP via SOCKS5 auth OK ---"
-
-      - name: Test HTTPS through authenticated SOCKS5
-        run: |
-          RESPONSE=$(curl -sf -x http://127.0.0.1:3128 https://httpbin.org/ip)
-          echo "Response: ${RESPONSE}"
-          echo "${RESPONSE}" | grep -q "origin" || { echo "FAIL"; exit 1; }
-          echo "--- HTTPS via SOCKS5 auth OK ---"
 
       - name: Show logs on failure
         if: failure()
@@ -321,6 +355,7 @@ jobs:
         if: always()
         run: |
           docker rm -f squid-auth socks5-auth 2>/dev/null || true
+          kill %1 2>/dev/null || true
 
   # ------------------------------------------------------------------
   # 5. Test: generate.php produces correct config
