@@ -95,4 +95,6 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3128
 
+# Starts as root so docker-entrypoint.sh can run squid -z (cache init) and chown;
+# privileges are dropped to squid user via gosu before starting the daemon.
 ENTRYPOINT ["docker-entrypoint.sh"]

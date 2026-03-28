@@ -311,8 +311,6 @@ for pat in [
     r'(void\s+TunnelStateData::connectDone\s*\([^)]*\)\s*\{)',
     r'(TunnelStateData::connectDone\s*\([^)]*\)\s*\n?\s*\{)',
     r'(void\s+tunnelConnectDone\s*\([^)]*\)\s*\{)',
-    r'(void\s+TunnelStateData::connectToPeer\s*\([^)]*\)\s*\{)',
-    r'(TunnelStateData::connectToPeer\s*\([^)]*\)\s*\n?\s*\{)',
 ]:
     match = re.search(pat, content)
     if match:

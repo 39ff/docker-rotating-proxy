@@ -150,10 +150,11 @@ jobs:
       - name: Load image
         run: docker load -i /tmp/squid-image.tar
 
-      - name: Start SOCKS5 test server (microsocks)
+      - name: Start SOCKS5 test server
         run: |
           docker run -d --name socks5-server --network host \
-            ghcr.io/rofl0r/microsocks:latest -p 11080
+            -e PROXY_PORT=11080 \
+            serjs/go-socks5-proxy:latest
           sleep 2
           docker logs socks5-server
 
@@ -217,7 +218,7 @@ jobs:
         run: |
           echo "=== Squid logs ==="
           docker logs squid-test 2>&1 || true
-          echo "=== SOCKS5 server logs ==="
+          echo "=== SOCKS5 test server logs ==="
           docker logs socks5-server 2>&1 || true
 
       - name: Cleanup
@@ -245,10 +246,13 @@ jobs:
       - name: Load image
         run: docker load -i /tmp/squid-image.tar
 
-      - name: Start SOCKS5 server with auth (microsocks)
+      - name: Start SOCKS5 server with auth
         run: |
           docker run -d --name socks5-auth --network host \
-            ghcr.io/rofl0r/microsocks:latest -u testuser -P testpass -p 11081
+            -e PROXY_PORT=11081 \
+            -e PROXY_USER=testuser \
+            -e PROXY_PASSWORD=testpass \
+            serjs/go-socks5-proxy:latest
           sleep 2
 
       - name: Create Squid config with SOCKS5 auth
