@@ -45,9 +45,10 @@ while ($line = fgets($proxies)){
         // Native SOCKS support via Squid cache_peer patch (no Gost needed)
         $socksOpt = $proxyInfo['scheme'];  // "socks4" or "socks5"
         if ($proxyInfo['user'] && $proxyInfo['pass']) {
+            // SOCKS5 RFC1929 uses raw username/password; do not URL-encode.
             $socksOpt .= sprintf(' socks-user=%s socks-pass=%s',
-                urlencode($proxyInfo['user']),
-                urlencode($proxyInfo['pass'])
+                $proxyInfo['user'],
+                $proxyInfo['pass']
             );
         }
         $squid_conf[] = sprintf($squid_socks,

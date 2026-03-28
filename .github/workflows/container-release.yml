@@ -20,7 +20,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/squid-socks
+  IMAGE_NAME: squid-socks
 
 jobs:
   build-and-push:
@@ -46,11 +46,14 @@ jobs:
       - name: Prepare tags
         id: tags
         run: |
-          TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}"
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          FULL_IMAGE="${{ env.REGISTRY }}/${OWNER}/${{ env.IMAGE_NAME }}"
+          TAGS="${FULL_IMAGE}:${{ inputs.version }}"
           if [ "${{ inputs.push_latest }}" = "true" ] && [ "${{ inputs.version }}" != "latest" ]; then
-            TAGS="${TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+            TAGS="${TAGS},${FULL_IMAGE}:latest"
           fi
           echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "image=${FULL_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "Tags to push: ${TAGS}"
 
       - name: Build and push
@@ -71,6 +74,6 @@ jobs:
 
       - name: Verify pushed image
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }} squid -v
+          docker pull ${{ steps.tags.outputs.image }}:${{ inputs.version }}
+          docker run --rm ${{ steps.tags.outputs.image }}:${{ inputs.version }} squid -v
           echo "--- Image verification OK ---"

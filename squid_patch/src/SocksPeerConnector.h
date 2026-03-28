@@ -181,10 +181,11 @@ static inline bool socks5Connect(int fd,
         if (aResp[0] != 0x01 || aResp[1] != 0x00)
             return false;   /* auth failed or wrong sub-negotiation version */
 
-    } else if (gResp[1] == 0xFF) {
-        return false;       /* no acceptable method */
+    } else if (gResp[1] == 0x00) {
+        /* no auth required */
+    } else {
+        return false;       /* unsupported or unacceptable method (includes 0xFF) */
     }
-    /* else gResp[1] == 0x00 → no auth required */
 
     /* --- connect request --------------------------------------------- */
     uint8_t connReq[263];
@@ -286,15 +287,20 @@ static inline bool negotiate(int fd, SocksPeerType type,
     /* save original timeouts and set a 10 s limit for the handshake */
     struct timeval origRecvTv = {0, 0}, origSendTv = {0, 0};
     socklen_t tvLen = sizeof(struct timeval);
-    getsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &origRecvTv, &tvLen);
-    tvLen = sizeof(struct timeval);
-    getsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &origSendTv, &tvLen);
+    if (getsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &origRecvTv, &tvLen) < 0 ||
+        getsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &origSendTv, &tvLen) < 0) {
+        fcntl(fd, F_SETFL, flags);
+        return false;
+    }
 
     struct timeval tv;
     tv.tv_sec  = 10;
     tv.tv_usec = 0;
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0 ||
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
+        fcntl(fd, F_SETFL, flags);
+        return false;
+    }
 
     bool ok = false;
     if (type == SOCKS_V4)
@@ -302,10 +308,13 @@ static inline bool negotiate(int fd, SocksPeerType type,
     else if (type == SOCKS_V5)
         ok = socks5Connect(fd, targetHost, targetPort, user, pass);
 
-    /* restore original flags and timeouts */
-    fcntl(fd, F_SETFL, flags);
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &origRecvTv, sizeof(origRecvTv));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &origSendTv, sizeof(origSendTv));
+    /* restore original flags and timeouts (best-effort, log-worthy but not fatal) */
+    int restoreOk = 0;
+    restoreOk |= fcntl(fd, F_SETFL, flags);
+    restoreOk |= setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &origRecvTv, sizeof(origRecvTv));
+    restoreOk |= setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &origSendTv, sizeof(origSendTv));
+    if (restoreOk < 0 && ok)
+        return false;   /* negotiation succeeded but socket is in bad state */
 
     return ok;
 }

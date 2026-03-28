@@ -284,7 +284,7 @@ jobs:
         run: |
           docker rm -f squid-test 2>/dev/null || true
           pkill microsocks 2>/dev/null || true
-          kill %1 2>/dev/null || true
+          pkill -f 'python3 -m http.server' 2>/dev/null || true
 
   # ------------------------------------------------------------------
   # 4. Test: SOCKS5 with authentication
@@ -442,7 +442,7 @@ jobs:
         run: |
           docker rm -f squid-auth 2>/dev/null || true
           pkill microsocks 2>/dev/null || true
-          kill %1 2>/dev/null || true
+          pkill -f 'python3 -m http.server' 2>/dev/null || true
 
   # ------------------------------------------------------------------
   # 5. Test: generate.php produces correct config
