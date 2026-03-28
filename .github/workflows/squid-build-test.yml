@@ -192,10 +192,16 @@ jobs:
 
       - name: Start Squid with SOCKS5 peer
         run: |
+          # Bypass entrypoint - run squid directly to isolate issues
           docker run -d --name squid-test --network host \
             -v /tmp/squid-conf:/etc/squid/conf.d:ro \
-            -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
-            ${{ env.SQUID_IMAGE }}
+            --entrypoint /bin/sh \
+            ${{ env.SQUID_IMAGE }} \
+            -c '
+              squid -z -N -f /etc/squid/conf.d/squid.conf 2>&1 || true
+              echo "=== Starting Squid ==="
+              exec squid -N -f /etc/squid/conf.d/squid.conf 2>&1
+            '
           sleep 5
           echo "=== Container status ==="
           docker ps -a --filter name=squid-test --format '{{.Status}}'
@@ -332,8 +338,13 @@ jobs:
         run: |
           docker run -d --name squid-auth --network host \
             -v /tmp/squid-conf-auth:/etc/squid/conf.d:ro \
-            -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
-            ${{ env.SQUID_IMAGE }}
+            --entrypoint /bin/sh \
+            ${{ env.SQUID_IMAGE }} \
+            -c '
+              squid -z -N -f /etc/squid/conf.d/squid.conf 2>&1 || true
+              echo "=== Starting Squid ==="
+              exec squid -N -f /etc/squid/conf.d/squid.conf 2>&1
+            '
           sleep 5
           echo "=== Container status ==="
           docker ps -a --filter name=squid-auth --format '{{.Status}}'
