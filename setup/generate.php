@@ -37,16 +37,19 @@ while ($line = fgets($proxies)){
         continue;
     }
 
-    // Validate host: hostname or IPv4/IPv6 literal. No shell/conf metachars.
+    // Validate host: hostname or IPv4 literal. No shell/conf metachars.
+    // IPv6 literals are not supported: the naive explode(":") parser above
+    // cannot split "[::1]:8080:..." correctly, so ':' / '[' / ']' are rejected
+    // to avoid giving the impression that IPv6 is accepted.
     if (preg_match($reject_unsafe, $proxyInfo['host']) ||
-        !preg_match('/^[A-Za-z0-9.:\[\]_-]+$/', $proxyInfo['host'])) {
-        fwrite(STDERR, "Skipping proxy with invalid host: " . $proxyInfo['host'] . PHP_EOL);
+        !preg_match('/^[A-Za-z0-9._-]+$/', $proxyInfo['host'])) {
+        fwrite(STDERR, "Skipping proxy with invalid host: " . rawurlencode($proxyInfo['host']) . PHP_EOL);
         continue;
     }
     // Validate port: 1-65535.
     if (!ctype_digit((string)$proxyInfo['port']) ||
         (int)$proxyInfo['port'] < 1 || (int)$proxyInfo['port'] > 65535) {
-        fwrite(STDERR, "Skipping proxy with invalid port: " . $proxyInfo['port'] . PHP_EOL);
+        fwrite(STDERR, "Skipping proxy with invalid port: " . rawurlencode((string)$proxyInfo['port']) . PHP_EOL);
         continue;
     }
     // Validate credentials: no whitespace/control chars/quotes/backslash/#.
