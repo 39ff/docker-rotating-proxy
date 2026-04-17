@@ -19,12 +19,46 @@ $squid_default = 'cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-
 // the connection is direct to the target (not an HTTP proxy).
 $squid_socks = 'cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only originserver name=%s %s';
 
+// Reject any byte that could break squid.conf tokenization or inject
+// a new directive (whitespace, control chars, quotes, backslash, '#').
+// Applied to host/user/pass to prevent config injection from a tainted
+// proxyList.txt (e.g. one fetched from a remote URL).
+$reject_unsafe = '/[\s"#\\\\\x00-\x1F\x7F]/';
+
 while ($line = fgets($proxies)){
     $line = trim($line);
+    if ($line === '' || $line[0] === '#') {
+        continue;
+    }
     $proxyInfo = array_combine($keys, array_pad((explode(":", $line, 5)), 5, ''));
     $squid_conf = [];
     $cred = '';
     if(!$proxyInfo['host'] && !$proxyInfo['port']){
+        continue;
+    }
+
+    // Validate host: hostname or IPv4/IPv6 literal. No shell/conf metachars.
+    if (preg_match($reject_unsafe, $proxyInfo['host']) ||
+        !preg_match('/^[A-Za-z0-9.:\[\]_-]+$/', $proxyInfo['host'])) {
+        fwrite(STDERR, "Skipping proxy with invalid host: " . $proxyInfo['host'] . PHP_EOL);
+        continue;
+    }
+    // Validate port: 1-65535.
+    if (!ctype_digit((string)$proxyInfo['port']) ||
+        (int)$proxyInfo['port'] < 1 || (int)$proxyInfo['port'] > 65535) {
+        fwrite(STDERR, "Skipping proxy with invalid port: " . $proxyInfo['port'] . PHP_EOL);
+        continue;
+    }
+    // Validate credentials: no whitespace/control chars/quotes/backslash/#.
+    // (SOCKS5 RFC1929 allows up to 255 bytes of arbitrary octets, but we
+    //  conservatively reject bytes that would break squid.conf.)
+    if (($proxyInfo['user'] !== '' && preg_match($reject_unsafe, $proxyInfo['user'])) ||
+        ($proxyInfo['pass'] !== '' && preg_match($reject_unsafe, $proxyInfo['pass']))) {
+        fwrite(STDERR, "Skipping proxy with unsafe characters in credentials: " . $proxyInfo['host'] . PHP_EOL);
+        continue;
+    }
+    if (strlen($proxyInfo['user']) > 255 || strlen($proxyInfo['pass']) > 255) {
+        fwrite(STDERR, "Skipping proxy with credentials exceeding 255 bytes: " . $proxyInfo['host'] . PHP_EOL);
         continue;
     }
 

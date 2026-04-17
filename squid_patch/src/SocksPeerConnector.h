@@ -127,20 +127,15 @@ static inline bool socks5Connect(int fd,
     const bool hasAuth = (!user.empty() && !pass.empty());
 
     /* --- greeting ---------------------------------------------------- */
-    uint8_t greeting[4];
-    size_t gLen;
-    if (hasAuth) {
-        greeting[0] = 0x05;   /* VER                     */
-        greeting[1] = 0x02;   /* NMETHODS                */
-        greeting[2] = 0x00;   /* NO AUTHENTICATION       */
-        greeting[3] = 0x02;   /* USERNAME / PASSWORD      */
-        gLen = 4;
-    } else {
-        greeting[0] = 0x05;
-        greeting[1] = 0x01;
-        greeting[2] = 0x00;
-        gLen = 3;
-    }
+    /* When credentials are configured, advertise ONLY USER/PASS to
+     * prevent a rogue SOCKS5 server from silently downgrading to
+     * "no authentication" and accepting traffic without verifying
+     * the credentials the operator explicitly provided. */
+    uint8_t greeting[3];
+    greeting[0] = 0x05;       /* VER      */
+    greeting[1] = 0x01;       /* NMETHODS */
+    greeting[2] = hasAuth ? 0x02 : 0x00;  /* USER/PASS or NO AUTH */
+    const size_t gLen = 3;
 
     if (!syncSend(fd, greeting, gLen))
         return false;
@@ -182,7 +177,11 @@ static inline bool socks5Connect(int fd,
             return false;   /* auth failed or wrong sub-negotiation version */
 
     } else if (gResp[1] == 0x00) {
-        /* no auth required */
+        /* Server chose "no authentication". Only accept this when the
+         * operator did NOT configure credentials; otherwise the server
+         * is downgrading away from the authentication we required. */
+        if (hasAuth)
+            return false;
     } else {
         return false;       /* unsupported or unacceptable method (includes 0xFF) */
     }
