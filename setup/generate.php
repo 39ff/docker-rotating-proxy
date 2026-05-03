@@ -81,12 +81,17 @@ while ($line = fgets($proxies)){
     elseif(in_array($proxyInfo['scheme'], ['socks4', 'socks5'], true)){
         // Native SOCKS support via Squid cache_peer patch (no Gost needed)
         $socksOpt = $proxyInfo['scheme'];  // "socks4" or "socks5"
-        if ($proxyInfo['user'] && $proxyInfo['pass']) {
+        // socks-user/socks-pass are only valid with socks5 (RFC1929).
+        // The Squid patch rejects them on socks4, so emitting them there
+        // would break config parsing.  Skip and warn for socks4 entries.
+        if ($proxyInfo['scheme'] === 'socks5' && $proxyInfo['user'] && $proxyInfo['pass']) {
             // SOCKS5 RFC1929 uses raw username/password; do not URL-encode.
             $socksOpt .= sprintf(' socks-user=%s socks-pass=%s',
                 $proxyInfo['user'],
                 $proxyInfo['pass']
             );
+        } elseif ($proxyInfo['scheme'] === 'socks4' && ($proxyInfo['user'] || $proxyInfo['pass'])) {
+            fwrite(STDERR, "Note: SOCKS4 credentials ignored (use socks5 for auth): " . $proxyInfo['host'] . PHP_EOL);
         }
         $squid_conf[] = sprintf($squid_socks,
             $proxyInfo['host'],

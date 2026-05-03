@@ -210,6 +210,15 @@ socks_hook = r'''
     /* SOCKS peer negotiation: after TCP connect, before HTTP dispatch */
     if (const auto sp = serverConnection()->getPeer()) {
         if (sp->socks_type) {
+            /* The SOCKS tunnel is bound to (request->url.host():port).
+             * The pconn pool is keyed by peer address, NOT target, so a
+             * pooled SOCKS-negotiated connection would silently route the
+             * next request to the WRONG destination.  Force the upstream
+             * connection to close after this request to keep one tunnel
+             * per target, and to guarantee the next dispatch() runs on a
+             * freshly-connected fd that has not been SOCKS-negotiated yet. */
+            request->flags.proxyKeepalive = false;
+
             const auto targetPort = static_cast<uint16_t>(request->url.port());
             debugs(17, 3, "SOCKS" << sp->socks_type
                    << " negotiation with peer " << sp->host
@@ -290,6 +299,11 @@ socks_tunnel_hook = r'''
     /* SOCKS peer: negotiate tunnel right after TCP connect */
     if (conn->getPeer() && conn->getPeer()->socks_type) {
         const auto sp = conn->getPeer();
+        /* Same rationale as FwdState::dispatch(): the SOCKS tunnel is
+         * bound to one target host, so prevent this connection from being
+         * returned to the pconn pool where another request could pick it
+         * up and silently send data into the previous target's tunnel. */
+        request->flags.proxyKeepalive = false;
         const auto targetPort = static_cast<uint16_t>(request->url.port());
         debugs(26, 3, "SOCKS" << sp->socks_type
                << " tunnel negotiation with peer " << sp->host
