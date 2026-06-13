@@ -280,8 +280,17 @@ socks_hook = r'''
              * live stream, and using it as-is would silently mis-route this
              * request.  Drop it and let FwdState retry on a fresh fd. */
             if (serverConnection()->socksNegotiated) {
-                debugs(17, 2, "SOCKS: peer connection to " << sp->host
-                       << " already negotiated; retrying on a fresh connection");
+                /* A reused, already-negotiated pconn is a tunnel bound to a
+                 * previous target.  Tear it down before retrying: noteConnection()
+                 * has already set destinationReceipt and syncWithServerConn() has
+                 * installed serverConn/closeHandler, so a bare retryOrBail() would
+                 * re-enter noteConnection() with destinationReceipt still set and
+                 * trip assert(!destinationReceipt).  Mirror serverClosed(). */
+                debugs(17, 2, "SOCKS: dropping reused negotiated connection to "
+                       << sp->host << "; retrying on a fresh fd");
+                closeServerConnection("reused SOCKS tunnel cannot serve a new target");
+                serverConn = nullptr;
+                destinationReceipt = nullptr;
                 retryOrBail();
                 return;
             }
@@ -307,6 +316,9 @@ socks_hook = r'''
                     sp->socks_user ? std::string(sp->socks_user) : std::string(),
                     sp->socks_pass ? std::string(sp->socks_pass) : std::string())) {
                 debugs(17, 2, "SOCKS negotiation FAILED for peer " << sp->host);
+                closeServerConnection("SOCKS negotiation failed");
+                serverConn = nullptr;
+                destinationReceipt = nullptr;
                 retryOrBail();
                 return;
             }
@@ -379,8 +391,12 @@ socks_tunnel_hook = r'''
         /* Anti-reuse guard: never re-negotiate (or reuse) a connection that
          * already carries a SOCKS tunnel to a previous target. */
         if (conn->socksNegotiated) {
-            debugs(26, 2, "SOCKS: tunnel peer connection to " << sp->host
-                   << " already negotiated; reconnecting");
+            /* Reused tunnel connection already bound to a previous target:
+             * close the pending conn (server.conn is still nil here) before
+             * retrying, matching tunnel.cc's other error paths. */
+            debugs(26, 2, "SOCKS: dropping reused negotiated tunnel connection to "
+                   << sp->host << "; retrying");
+            closePendingConnection(conn, "reused SOCKS tunnel cannot serve a new target");
             saveError(new ErrorState(ERR_CONNECT_FAIL, Http::scBadGateway, request.getRaw(), al));
             retryOrBail("SOCKS tunnel reuse");
             return;
@@ -402,6 +418,7 @@ socks_tunnel_hook = r'''
                 sp->socks_user ? std::string(sp->socks_user) : std::string(),
                 sp->socks_pass ? std::string(sp->socks_pass) : std::string())) {
             debugs(26, 2, "SOCKS tunnel negotiation FAILED for " << sp->host);
+            closePendingConnection(conn, "SOCKS negotiation failed");
             saveError(new ErrorState(ERR_CONNECT_FAIL, Http::scBadGateway, request.getRaw(), al));
             retryOrBail("SOCKS negotiation failed");
             return;
