@@ -445,6 +445,140 @@ jobs:
           pkill -f 'python3 -m http.server' 2>/dev/null || true
 
   # ------------------------------------------------------------------
+  # 4b. Test: SOCKS5 connection reuse / no cross-target routing
+  #     Regression for codex P1/P2: a SOCKS tunnel bound to target X must
+  #     never be reused for target Y, even with server pconns ENABLED.
+  # ------------------------------------------------------------------
+  test-socks5-reuse:
+    name: Test SOCKS5 No Cross-Target Reuse
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: squid-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/squid-image.tar
+
+      - name: Start two distinct origin servers (A and B)
+        run: |
+          mkdir -p /tmp/wwwA /tmp/wwwB
+          echo 'ORIGIN-AAAA' > /tmp/wwwA/ip
+          echo 'ORIGIN-BBBB' > /tmp/wwwB/ip
+          python3 -m http.server 18090 --directory /tmp/wwwA &
+          python3 -m http.server 18091 --directory /tmp/wwwB &
+          sleep 1
+          curl -sf http://127.0.0.1:18090/ip | grep -q ORIGIN-AAAA
+          curl -sf http://127.0.0.1:18091/ip | grep -q ORIGIN-BBBB
+          echo "--- Origins A/B ready ---"
+
+      - name: Build and start SOCKS5 test server (microsocks)
+        run: |
+          if [ ! -f /tmp/microsocks/microsocks ]; then
+            git clone --depth 1 https://github.com/rofl0r/microsocks.git /tmp/microsocks
+            cd /tmp/microsocks && make -j"$(nproc)"
+          fi
+          /tmp/microsocks/microsocks -p 11090 &
+          sleep 1
+          curl -sf --socks5-hostname 127.0.0.1:11090 http://127.0.0.1:18090/ip | grep -q ORIGIN-AAAA
+          curl -sf --socks5-hostname 127.0.0.1:11090 http://127.0.0.1:18091/ip | grep -q ORIGIN-BBBB
+          echo "--- SOCKS5 server reaches both origins ---"
+
+      - name: Create Squid config with server pconns ENABLED
+        run: |
+          mkdir -p /tmp/squid-conf-reuse
+          cat > /tmp/squid-conf-reuse/squid.conf <<CONF
+          http_port 3128
+          http_access allow all
+          never_direct allow all
+          server_persistent_connections on
+          client_persistent_connections on
+          cache_peer 127.0.0.1 parent 11090 0 no-query no-digest connect-fail-limit=2 connect-timeout=8 round-robin proxy-only originserver name=socks_reuse socks5
+          visible_hostname test
+          cache deny all
+          pid_filename /var/run/squid/squid.pid
+          cache_log /var/log/squid/cache.log
+          access_log stdio:/var/log/squid/access.log combined
+          CONF
+          echo "--- Config (server_persistent_connections ON) ---"
+          cat /tmp/squid-conf-reuse/squid.conf
+
+      - name: Start Squid
+        run: |
+          docker run -d --name squid-reuse --network host \
+            -v /tmp/squid-conf-reuse:/etc/squid/conf.d:ro \
+            -e SQUID_CONFIG_FILE=/etc/squid/conf.d/squid.conf \
+            ${{ env.SQUID_IMAGE }}
+          sleep 5
+          if ! docker ps --filter name=squid-reuse --filter status=running -q | grep -q .; then
+            echo "ERROR: Squid container is not running"
+            docker logs squid-reuse 2>&1 || true
+            exit 1
+          fi
+
+      - name: Wait for Squid to listen
+        run: |
+          for i in $(seq 1 30); do
+            if bash -c 'echo > /dev/tcp/127.0.0.1/3128' 2>/dev/null; then
+              echo "Squid is listening after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "ERROR: Squid never started listening"
+          docker logs squid-reuse 2>&1 || true
+          exit 1
+
+      - name: Alternate A/B requests and assert no cross-target reuse
+        run: |
+          fail=0
+          for i in 1 2 3 4; do
+            RA=$(curl -s --max-time 15 -x http://127.0.0.1:3128 http://127.0.0.1:18090/ip || true)
+            RB=$(curl -s --max-time 15 -x http://127.0.0.1:3128 http://127.0.0.1:18091/ip || true)
+            echo "iter ${i}: A='${RA}' B='${RB}'"
+            echo "${RA}" | grep -q 'ORIGIN-AAAA' || { echo "FAIL: target A returned '${RA}'"; fail=1; }
+            echo "${RB}" | grep -q 'ORIGIN-BBBB' || { echo "FAIL: cross-target reuse! target B returned '${RB}'"; fail=1; }
+          done
+          echo "=== Squid logs ==="
+          docker logs squid-reuse 2>&1 | tail -40 || true
+          [ "${fail}" -eq 0 ] || { echo "--- Cross-target reuse detected ---"; exit 1; }
+          echo "--- No cross-target reuse: OK ---"
+
+      - name: Post Squid logs to PR on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            let logs = '';
+            try { logs = execSync('docker logs squid-reuse 2>&1', {encoding: 'utf8', maxBuffer: 50*1024}); } catch(e) { logs = e.stdout || e.message; }
+            const body = `### Reuse Test Squid Logs\n\`\`\`\n${logs.slice(-3000)}\n\`\`\``;
+            const issueNumber = context.issue.number;
+            if (!issueNumber) {
+              console.log('No PR context; skipping comment.');
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: body
+              });
+            }
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f squid-reuse 2>/dev/null || true
+          pkill microsocks 2>/dev/null || true
+          pkill -f 'python3 -m http.server' 2>/dev/null || true
+
+  # ------------------------------------------------------------------
   # 5. Test: generate.php produces correct config
   # ------------------------------------------------------------------
   test-generate:

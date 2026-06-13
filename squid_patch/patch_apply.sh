@@ -70,6 +70,70 @@ fi
 echo "    CachePeer.cc patched OK"
 
 # ---------------------------------------------------------------------------
+# 1c. comm/Connection.h  –  add socksNegotiated flag (SOCKS anti-reuse guard)
+# ---------------------------------------------------------------------------
+# A SOCKS-negotiated cache_peer connection is a raw tunnel bound to ONE target
+# (request->url.host():port).  The persistent-connection pool is keyed by peer,
+# NOT target, so a pooled SOCKS connection could otherwise be reused for a
+# different target (silent mis-routing) or receive a second SOCKS greeting
+# injected into a live stream.  This per-connection flag lets the FwdState /
+# tunnel hooks detect and refuse such reuse.
+CONNECTION_H="${SQUID_SRC}/src/comm/Connection.h"
+echo "==> Patching ${CONNECTION_H}"
+[ -f "${CONNECTION_H}" ] || die "comm/Connection.h not found"
+
+if ! grep -q 'socksNegotiated' "${CONNECTION_H}"; then
+    python3 - "${CONNECTION_H}" << 'PYEOF'
+import sys, re
+
+filepath = sys.argv[1]
+with open(filepath, 'r') as f:
+    content = f.read()
+
+# Locate the *definition* of class Connection (skip forward declarations like
+# "class Connection;").  A definition has an opening "{" before any ";".
+match = None
+brace_start = -1
+for mm in re.finditer(r'class\s+Connection\b', content):
+    rest = content[mm.end():]
+    brace = rest.find('{')
+    semi = rest.find(';')
+    if brace != -1 and (semi == -1 or brace < semi):
+        match = mm
+        brace_start = mm.end() + brace
+        break
+
+if match is None:
+    print("ERROR: class Connection definition not found in Connection.h", file=sys.stderr)
+    sys.exit(1)
+
+# Brace-match to find the closing "}" of the class body.
+depth = 1
+pos = brace_start + 1
+while pos < len(content) and depth > 0:
+    if content[pos] == '{': depth += 1
+    elif content[pos] == '}': depth -= 1
+    pos += 1
+
+# pos is right after the closing "}"; insert the field just before it.
+field = ('\npublic:\n'
+         '    /* SOCKS peer support: true once SocksPeerConnector has\n'
+         '     * negotiated a tunnel on this fd.  Prevents a pooled SOCKS\n'
+         '     * tunnel (bound to one target) from being reused for another. */\n'
+         '    bool socksNegotiated = false;\n')
+insert_at = pos - 1
+content = content[:insert_at] + field + content[insert_at:]
+
+with open(filepath, 'w') as f:
+    f.write(content)
+print("    Inserted socksNegotiated flag into class Connection")
+PYEOF
+    grep -q 'socksNegotiated' "${CONNECTION_H}" || die "Failed to add socksNegotiated to Connection.h"
+fi
+
+echo "    comm/Connection.h patched OK"
+
+# ---------------------------------------------------------------------------
 # 2. cache_cf.cc  –  parse socks4 / socks5 / socks-user= / socks-pass=
 # ---------------------------------------------------------------------------
 CACHE_CF="${SQUID_SRC}/src/cache_cf.cc"
@@ -210,6 +274,27 @@ socks_hook = r'''
     /* SOCKS peer negotiation: after TCP connect, before HTTP dispatch */
     if (const auto sp = serverConnection()->getPeer()) {
         if (sp->socks_type) {
+            /* Anti-reuse guard: a connection that has already been
+             * SOCKS-negotiated is a pooled tunnel bound to a *previous*
+             * target.  Re-negotiating would inject a second greeting into a
+             * live stream, and using it as-is would silently mis-route this
+             * request.  Drop it and let FwdState retry on a fresh fd. */
+            if (serverConnection()->socksNegotiated) {
+                /* A reused, already-negotiated pconn is a tunnel bound to a
+                 * previous target.  Tear it down before retrying: noteConnection()
+                 * has already set destinationReceipt and syncWithServerConn() has
+                 * installed serverConn/closeHandler, so a bare retryOrBail() would
+                 * re-enter noteConnection() with destinationReceipt still set and
+                 * trip assert(!destinationReceipt).  Mirror serverClosed(). */
+                debugs(17, 2, "SOCKS: dropping reused negotiated connection to "
+                       << sp->host << "; retrying on a fresh fd");
+                closeServerConnection("reused SOCKS tunnel cannot serve a new target");
+                serverConn = nullptr;
+                destinationReceipt = nullptr;
+                retryOrBail();
+                return;
+            }
+
             /* The SOCKS tunnel is bound to (request->url.host():port).
              * The pconn pool is keyed by peer address, NOT target, so a
              * pooled SOCKS-negotiated connection would silently route the
@@ -231,9 +316,13 @@ socks_hook = r'''
                     sp->socks_user ? std::string(sp->socks_user) : std::string(),
                     sp->socks_pass ? std::string(sp->socks_pass) : std::string())) {
                 debugs(17, 2, "SOCKS negotiation FAILED for peer " << sp->host);
+                closeServerConnection("SOCKS negotiation failed");
+                serverConn = nullptr;
+                destinationReceipt = nullptr;
                 retryOrBail();
                 return;
             }
+            serverConnection()->socksNegotiated = true;
             debugs(17, 3, "SOCKS negotiation OK for peer " << sp->host);
         }
     }
@@ -299,6 +388,19 @@ socks_tunnel_hook = r'''
     /* SOCKS peer: negotiate tunnel right after TCP connect */
     if (conn->getPeer() && conn->getPeer()->socks_type) {
         const auto sp = conn->getPeer();
+        /* Anti-reuse guard: never re-negotiate (or reuse) a connection that
+         * already carries a SOCKS tunnel to a previous target. */
+        if (conn->socksNegotiated) {
+            /* Reused tunnel connection already bound to a previous target:
+             * close the pending conn (server.conn is still nil here) before
+             * retrying, matching tunnel.cc's other error paths. */
+            debugs(26, 2, "SOCKS: dropping reused negotiated tunnel connection to "
+                   << sp->host << "; retrying");
+            closePendingConnection(conn, "reused SOCKS tunnel cannot serve a new target");
+            saveError(new ErrorState(ERR_CONNECT_FAIL, Http::scBadGateway, request.getRaw(), al));
+            retryOrBail("SOCKS tunnel reuse");
+            return;
+        }
         /* Same rationale as FwdState::dispatch(): the SOCKS tunnel is
          * bound to one target host, so prevent this connection from being
          * returned to the pconn pool where another request could pick it
@@ -316,10 +418,12 @@ socks_tunnel_hook = r'''
                 sp->socks_user ? std::string(sp->socks_user) : std::string(),
                 sp->socks_pass ? std::string(sp->socks_pass) : std::string())) {
             debugs(26, 2, "SOCKS tunnel negotiation FAILED for " << sp->host);
+            closePendingConnection(conn, "SOCKS negotiation failed");
             saveError(new ErrorState(ERR_CONNECT_FAIL, Http::scBadGateway, request.getRaw(), al));
             retryOrBail("SOCKS negotiation failed");
             return;
         }
+        conn->socksNegotiated = true;
         debugs(26, 3, "SOCKS tunnel negotiation OK for " << sp->host);
     }
 
@@ -357,6 +461,7 @@ echo ""
 echo "Modified files:"
 echo "  - src/CachePeer.h            (added socks_type/user/pass fields)"
 echo "  - src/CachePeer.cc           (added socks_user/pass cleanup in destructor)"
+echo "  - src/comm/Connection.h      (added socksNegotiated anti-reuse flag)"
 echo "  - src/cache_cf.cc            (added socks4/socks5 option parsing)"
 echo "  - src/FwdState.cc            (SOCKS negotiation in dispatch())"
 echo "  - src/tunnel.cc              (SOCKS negotiation in connectDone())"

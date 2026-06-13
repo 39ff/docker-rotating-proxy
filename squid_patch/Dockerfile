@@ -30,13 +30,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Download and extract Squid source (pinned version + integrity check)
+# Download and extract Squid source (pinned version + integrity check).
+# Fetch from several mirrors with retries: the primary www.squid-cache.org
+# host has intermittent outages.  Integrity is guaranteed by the SHA256 check
+# regardless of which mirror served the bytes, so mirror order is safe.
 ARG SQUID_TAR_SHA256=0b07b187e723f04770dd25beb89aec12030a158696aa8892d87c8b26853408a7
-RUN wget -q "https://www.squid-cache.org/Versions/v6/squid-${SQUID_VERSION}.tar.xz" \
-        -O squid.tar.xz \
-    && echo "${SQUID_TAR_SHA256}  squid.tar.xz" | sha256sum -c - \
-    && tar xf squid.tar.xz \
-    && rm squid.tar.xz
+RUN set -eux; \
+    SQUID_TAG="SQUID_$(echo "${SQUID_VERSION}" | tr . _)"; \
+    for url in \
+        "https://github.com/squid-cache/squid/releases/download/${SQUID_TAG}/squid-${SQUID_VERSION}.tar.xz" \
+        "https://www.squid-cache.org/Versions/v6/squid-${SQUID_VERSION}.tar.xz" \
+        "http://www.squid-cache.org/Versions/v6/squid-${SQUID_VERSION}.tar.xz" \
+    ; do \
+        echo "Fetching Squid source: ${url}"; \
+        if wget -q --tries=3 --timeout=30 -O squid.tar.xz "${url}"; then \
+            echo "Downloaded from ${url}"; \
+            break; \
+        fi; \
+        rm -f squid.tar.xz; \
+    done; \
+    echo "${SQUID_TAR_SHA256}  squid.tar.xz" | sha256sum -c -; \
+    tar xf squid.tar.xz; \
+    rm squid.tar.xz
 
 # Copy patch sources and apply
 COPY src/    /patches/src/
