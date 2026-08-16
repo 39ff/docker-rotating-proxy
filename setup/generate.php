@@ -15,12 +15,53 @@ $gluetun_http_port = 8888;
 $keys = ['host', 'port', 'scheme', 'user', 'pass'];
 $squid_default = 'cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only name=%s';
 
+// SOCKS cache_peer template: uses originserver because after SOCKS tunnel
+// the connection is direct to the target (not an HTTP proxy).
+$squid_socks = 'cache_peer %s parent %d 0 no-digest no-netdb-exchange connect-fail-limit=2 connect-timeout=8 round-robin no-query allow-miss proxy-only originserver name=%s %s';
+
+// Reject any byte that could break squid.conf tokenization or inject
+// a new directive (whitespace, control chars, quotes, backslash, '#').
+// Applied to host/user/pass to prevent config injection from a tainted
+// proxyList.txt (e.g. one fetched from a remote URL).
+$reject_unsafe = '/[\s"#\\\\\x00-\x1F\x7F]/';
+
 while ($line = fgets($proxies)){
     $line = trim($line);
+    if ($line === '' || $line[0] === '#') {
+        continue;
+    }
     $proxyInfo = array_combine($keys, array_pad((explode(":", $line, 5)), 5, ''));
     $squid_conf = [];
     $cred = '';
     if(!$proxyInfo['host'] && !$proxyInfo['port']){
+        continue;
+    }
+
+    // Validate host: hostname or IPv4 literal. No shell/conf metachars.
+    // IPv6 literals are not supported: the naive explode(":") parser above
+    // cannot split "[::1]:8080:..." correctly, so ':' / '[' / ']' are rejected
+    // to avoid giving the impression that IPv6 is accepted.
+    if (preg_match($reject_unsafe, $proxyInfo['host']) ||
+        !preg_match('/^[A-Za-z0-9._-]+$/', $proxyInfo['host'])) {
+        fwrite(STDERR, "Skipping proxy with invalid host: " . rawurlencode($proxyInfo['host']) . PHP_EOL);
+        continue;
+    }
+    // Validate port: 1-65535.
+    if (!ctype_digit((string)$proxyInfo['port']) ||
+        (int)$proxyInfo['port'] < 1 || (int)$proxyInfo['port'] > 65535) {
+        fwrite(STDERR, "Skipping proxy with invalid port: " . rawurlencode((string)$proxyInfo['port']) . PHP_EOL);
+        continue;
+    }
+    // Validate credentials: no whitespace/control chars/quotes/backslash/#.
+    // (SOCKS5 RFC1929 allows up to 255 bytes of arbitrary octets, but we
+    //  conservatively reject bytes that would break squid.conf.)
+    if (($proxyInfo['user'] !== '' && preg_match($reject_unsafe, $proxyInfo['user'])) ||
+        ($proxyInfo['pass'] !== '' && preg_match($reject_unsafe, $proxyInfo['pass']))) {
+        fwrite(STDERR, "Skipping proxy with unsafe characters in credentials: " . $proxyInfo['host'] . PHP_EOL);
+        continue;
+    }
+    if (strlen($proxyInfo['user']) > 255 || strlen($proxyInfo['pass']) > 255) {
+        fwrite(STDERR, "Skipping proxy with credentials exceeding 255 bytes: " . $proxyInfo['host'] . PHP_EOL);
         continue;
     }
 
@@ -36,8 +77,42 @@ while ($line = fgets($proxies)){
             //Username:Password Auth
             $squid_conf[] = vsprintf('login=%s:%s', array_map('urlencode', [$proxyInfo['user'], $proxyInfo['pass']]));
         }
-    }else{
-        //other proxy type ex:socks
+    }
+    elseif(in_array($proxyInfo['scheme'], ['socks4', 'socks5'], true)){
+        // Native SOCKS support via Squid cache_peer patch (no Gost needed)
+        $socksOpt = $proxyInfo['scheme'];  // "socks4" or "socks5"
+        // socks-user/socks-pass are only valid with socks5 (RFC1929).
+        // The Squid patch rejects them on socks4, so emitting them there
+        // would break config parsing.  Skip and warn for socks4 entries.
+        // Use !== '' rather than truthy checks so values like '0' are
+        // treated as valid credentials, and so a half-filled pair does
+        // not silently fall back to no-auth.
+        $hasUser = ($proxyInfo['user'] !== '');
+        $hasPass = ($proxyInfo['pass'] !== '');
+        if ($proxyInfo['scheme'] === 'socks5') {
+            if ($hasUser xor $hasPass) {
+                fwrite(STDERR, "Skipping SOCKS5 proxy with incomplete credentials: " . $proxyInfo['host'] . PHP_EOL);
+                continue;
+            }
+            if ($hasUser && $hasPass) {
+                // SOCKS5 RFC1929 uses raw username/password; do not URL-encode.
+                $socksOpt .= sprintf(' socks-user=%s socks-pass=%s',
+                    $proxyInfo['user'],
+                    $proxyInfo['pass']
+                );
+            }
+        } elseif ($proxyInfo['scheme'] === 'socks4' && ($hasUser || $hasPass)) {
+            fwrite(STDERR, "Note: SOCKS4 credentials ignored (use socks5 for auth): " . $proxyInfo['host'] . PHP_EOL);
+        }
+        $squid_conf[] = sprintf($squid_socks,
+            $proxyInfo['host'],
+            $proxyInfo['port'],
+            'socks'.$i,
+            $socksOpt
+        );
+    }
+    else{
+        // Other proxy types (http, https, etc.) – use Gost as HTTP proxy bridge
         if ($proxyInfo['user'] && $proxyInfo['pass']) {
             $cred = vsprintf('%s:%s@', array_map('urlencode', [$proxyInfo['user'], $proxyInfo['pass']]));
         }
