@@ -1,0 +1,30 @@
+# Proxy List Configuration
+#
+# Format Options:
+# 1. Use header line to define custom column order and delimiter:
+#    # format: host,port,scheme,user,pass
+#    # format: scheme:host:port:user:pass
+#    # format: port|host|scheme|user|pass
+#
+# 2. Without header (default): host:port:scheme:user:pass
+#
+# Supported delimiters: : (colon), , (comma), | (pipe), tab, space
+# Supported schemes: socks5, http, https, httpsquid
+# Lines starting with # are treated as comments
+
+# Example 1: Custom format with comma delimiter
+# format: host,port,scheme,user,pass
+159.89.206.161,2434,socks5,vpn,unlimited
+142.93.68.63,2434,socks5,vpn,unlimited
+82.196.7.200,2434,socks5,vpn,unlimited
+
+# Example 2: Simple IP:Port (no scheme = direct HTTP proxy)
+# 192.168.1.100:8080
+# 10.0.0.50:3128
+
+# Example 3: HTTP proxy with authentication
+# proxy.example.com:8080:httpsquid:username:password
+
+# Example 4: Different order (scheme first)
+# format: scheme,host,port,user,pass
+# socks5,proxy.example.com,1080,user,pass
