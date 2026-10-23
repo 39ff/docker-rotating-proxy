@@ -1,4 +1,17 @@
+# Clients allowed to use the proxy ports (3128 and 30000+).
+# One IPv4/IPv6 address or CIDR per line; '#' starts a comment.
+# setup/generate.py validates this file and writes config/allowed_ip.txt.
+
+# Clients on the Docker host itself (curl -x http://127.0.0.1:3128 ...) reach
+# the containers through Docker's port forwarding, so the proxy sees the
+# gateway of the compose network as their address. The generated
+# docker-compose.yml uses the subnet ${PROXY_SUBNET:-172.16.231.0/24}; if you
+# change PROXY_SUBNET, change this line to the new gateway (.1).
+172.16.231.1
+
+# Processes inside the containers (healthchecks).
 127.0.0.1
-172.17.0.1
-172.21.0.1
-172.24.0.1
+
+# Add your own client addresses below, e.g.:
+# 93.184.216.34
+# 198.51.100.0/24
