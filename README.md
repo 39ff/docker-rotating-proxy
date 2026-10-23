@@ -100,8 +100,11 @@ service credentials (not your account login) into `secret`.
   they never appear in `docker-compose.yml`.
 - Your `.ovpn` file is mounted read-only and never modified. gluetun's custom provider (v3.41.3) only accepts IP
   addresses in `remote` lines, because DNS is blocked until the tunnel is up. If your file uses a host name, the
-  generator resolves it and writes `openvpn/<name>/gluetun.conf` (gitignored), which is mounted instead. gluetun
-  uses only one `remote` line, so `remote-random` has no effect.
+  generator resolves it and writes `openvpn/<name>/gluetun.conf` (gitignored), which is mounted instead. The
+  chosen address is recorded in that file and reused on later runs, so round-robin DNS does not recreate the VPN
+  container every time you run the generator. Run `python3 setup/generate.py --refresh-dns` when the provider
+  retired that server (gluetun then fails to connect and the VPN's static port answers 503). gluetun uses only
+  one `remote` line, so `remote-random` has no effect.
 - Directory and file names may contain letters, digits, `.`, `_` and `-`.
 
 ## Allowlist

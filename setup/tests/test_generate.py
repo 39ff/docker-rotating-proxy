@@ -320,14 +320,18 @@ class GenerateTest(unittest.TestCase):
         self.tmp.cleanup()
 
     vpn_ip = "192.0.2.10"
+    vpn_answers = None  # list of addresses; when set it wins over vpn_ip
 
     def resolver(self, host):
         self.resolved.append(host)
-        return self.vpn_ip if host == "vpn.example.com" else None
+        if host != "vpn.example.com":
+            return None
+        return list(self.vpn_answers) if self.vpn_answers is not None else self.vpn_ip
 
-    def run_gen(self, squid_only=False):
+    def run_gen(self, squid_only=False, refresh_dns=False):
         rep = quiet_reporter()
-        rc = g.generate(self.root, squid_only=squid_only, rep=rep, resolver=self.resolver)
+        rc = g.generate(self.root, squid_only=squid_only, rep=rep, resolver=self.resolver,
+                        refresh_dns=refresh_dns)
         return rc, rep
 
     def write(self, rel, text):
@@ -524,10 +528,11 @@ class GenerateTest(unittest.TestCase):
         compose1 = (self.root / "docker-compose.yml").read_text()
         source_before = ovpn.read_text()
 
-        # Same .ovpn, new DNS answer: gluetun.conf and the vpn label change so
-        # that `docker compose up -d` recreates the VPN; squid and gost do not.
+        # Same .ovpn, new DNS answer, --refresh-dns: gluetun.conf and the vpn
+        # label change so that `docker compose up -d` recreates the VPN; squid
+        # and gost do not.
         self.vpn_ip = "192.0.2.20"
-        self.assertEqual(self.run_gen()[0], 0)
+        self.assertEqual(self.run_gen(refresh_dns=True)[0], 0)
         compose2 = (self.root / "docker-compose.yml").read_text()
         self.assertEqual(ovpn.read_text(), source_before)
         self.assertIn("remote 192.0.2.20 443", (self.root / "openvpn/v/gluetun.conf").read_text())
@@ -535,6 +540,43 @@ class GenerateTest(unittest.TestCase):
         labels2 = [l.strip() for l in compose2.splitlines() if "config-hash" in l]
         self.assertEqual(len(labels1), 3)
         self.assertEqual([a == b for a, b in zip(labels1, labels2)], [True, True, False])
+
+    def test_vpn_resolution_is_sticky_until_refreshed(self):
+        self.write("proxyList.txt", "1.2.3.4:1080:socks5:u:p\n")
+        self.add_vpn("v", "vpn.example.com")
+        conf = self.root / "openvpn/v/gluetun.conf"
+
+        # First run: the smallest address wins and is recorded.
+        self.vpn_answers = ["192.0.2.20", "192.0.2.10"]
+        self.assertEqual(self.run_gen()[0], 0)
+        text1 = conf.read_text()
+        self.assertIn("# resolved: vpn.example.com -> 192.0.2.10\n", text1)
+        self.assertIn("remote 192.0.2.10 443", text1)
+        compose1 = (self.root / "docker-compose.yml").read_text()
+
+        # Round-robin DNS now answers something else: the recorded address is
+        # reused without a lookup, so nothing changes and the VPN container is
+        # not recreated.
+        self.vpn_answers = ["192.0.2.30", "192.0.2.5"]
+        self.resolved = []
+        self.assertEqual(self.run_gen()[0], 0)
+        self.assertEqual(self.resolved, [])
+        self.assertEqual(conf.read_text(), text1)
+        self.assertEqual((self.root / "docker-compose.yml").read_text(), compose1)
+
+        # --refresh-dns resolves again and changes the label.
+        rc, rep = self.run_gen(refresh_dns=True)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.resolved, ["vpn.example.com"])
+        self.assertIn("remote 192.0.2.5 443", conf.read_text())
+        self.assertNotEqual((self.root / "docker-compose.yml").read_text(), compose1)
+
+        # A failed refresh keeps the recorded address instead of leaving the host name in.
+        self.vpn_answers = []
+        rc, rep = self.run_gen(refresh_dns=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("remote 192.0.2.5 443", conf.read_text())
+        self.assertTrue(any("keeping 192.0.2.5" in w for w in rep.warnings), rep.warnings)
 
     def test_squid_only_does_not_resolve_vpn_hosts(self):
         self.write("proxyList.txt", "1.2.3.4:1080:socks5:u:p\n")

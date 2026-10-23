@@ -128,11 +128,16 @@ isolates the change to "replace gost v2 containers by one gost v3 container".
 - **Recreate on config change.** Compose does not look at the content of bind-mounted files,
   so each generated service carries a label `rotating-proxy.config-hash` (Squid: template +
   allowlist + non-public peers; gost: `gost.yaml`; VPN: the file that is mounted, i.e. the
-  derived `gluetun.conf` when the `.ovpn` uses hostnames, so a changed DNS answer recreates the
-  VPN container too). `docker compose up -d` then recreates exactly the services whose config
-  changed. Peers from `publicProxyList.txt` are excluded from Squid's hash so the hourly cron
-  never forces a recreate, and `--squid-only` hashes the `gluetun.conf` already on disk instead
-  of resolving DNS again.
+  derived `gluetun.conf` when the `.ovpn` uses hostnames). `docker compose up -d` then
+  recreates exactly the services whose config changed. Peers from `publicProxyList.txt` are
+  excluded from Squid's hash so the hourly cron never forces a recreate, and `--squid-only`
+  hashes the `gluetun.conf` already on disk instead of resolving DNS again. Hostname
+  resolution is sticky: `gluetun.conf` records `# resolved: host -> ip` and later runs reuse
+  that address without a lookup (VPN providers answer with a different subset of their pool
+  on every query, so resolving on each run would recreate the VPN container on each run).
+  `python3 setup/generate.py --refresh-dns` resolves again, takes the smallest answer and,
+  if it changed, changes the label so the VPN is recreated. The e2e/CI "output is identical
+  from host python and from python:3.13-alpine" check relies on this.
 - **`retry_on_error on`** is new. It is what makes the gost hop tolerable (see the table in
   section 3), but it changes what clients see: a 403/500/501/503 relayed from an origin is
   retried on other peers before it reaches the client. Scrapers that rely on seeing those codes

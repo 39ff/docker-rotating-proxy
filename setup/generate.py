@@ -32,7 +32,7 @@ import tempfile
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 # --------------------------------------------------------------------------
 # Pinned images and fixed layout
@@ -76,6 +76,7 @@ _FORBIDDEN_CRED = re.compile(r"[\s\"'#`\x00-\x1f\x7f]")
 _HOSTNAME = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_])?$")
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _REMOTE = re.compile(r"^(\s*remote\s+)(\S+)(.*)$")
+_RESOLVED = re.compile(r"^#\s*resolved:\s*(\S+)\s*->\s*(\S+)\s*$")
 
 
 class LineError(ValueError):
@@ -786,27 +787,48 @@ def render_gluetun_env(vpn: Vpn) -> str:
             % (GENERATED_BY, vpn.name, dotenv_quote(vpn.user or ""), dotenv_quote(vpn.password or "")))
 
 
-Resolver = Callable[[str], Optional[str]]
+# Returns the IPv4 address(es) of a host name, or None when it does not resolve.
+Resolver = Callable[[str], Union[None, str, Sequence[str]]]
 
 
-def default_resolver(host: str) -> Optional[str]:
+def default_resolver(host: str) -> List[str]:
     try:
         infos = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)
     except (socket.gaierror, UnicodeError, OSError):
-        return None
-    return infos[0][4][0] if infos else None
+        return []
+    return sorted({info[4][0] for info in infos}, key=ipaddress.ip_address)
 
 
-def render_gluetun_conf(vpn: Vpn, resolver: Resolver, rep: Reporter) -> str:
+def previous_resolutions(path: Path) -> Dict[str, str]:
+    """`host -> ip` pairs recorded in an earlier generated gluetun.conf."""
+    result: Dict[str, str] = {}
+    try:
+        lines = read_lines(path)
+    except OSError:
+        return result
+    for line in lines:
+        m = _RESOLVED.match(line)
+        if m:
+            result[m.group(1)] = m.group(2)
+    return result
+
+
+def render_gluetun_conf(vpn: Vpn, resolver: Resolver, rep: Reporter,
+                        previous: Optional[Dict[str, str]] = None, refresh: bool = False) -> str:
     """Copy of the user's .ovpn with `remote <hostname>` resolved to an IP.
 
     gluetun's custom provider (v3.41.3, internal/openvpn/extract) rejects
     hostnames in `remote` lines because DNS is blocked until the tunnel is up.
+
+    Resolution is sticky: an address recorded in the previous gluetun.conf
+    (`# resolved: host -> ip`) is reused without asking DNS again, so the
+    round-robin answers VPN providers give do not change the file (and the
+    VPN service's config hash) on every run. `refresh` resolves again; the
+    smallest answer is taken so that two machines agree when they can.
     """
+    previous = previous or {}
     resolved: Dict[str, Optional[str]] = {}
-    out = ["# " + GENERATED_BY,
-           "# Source: openvpn/%s/%s with remote hostnames resolved (gluetun needs IP addresses)."
-           % (vpn.name, vpn.ovpn.name)]
+    body: List[str] = []
     for line in read_lines(vpn.ovpn):
         m = _REMOTE.match(line)
         if m and not line.strip().startswith(("#", ";")):
@@ -815,15 +837,34 @@ def render_gluetun_conf(vpn: Vpn, resolver: Resolver, rep: Reporter) -> str:
                 ipaddress.ip_address(host)
             except ValueError:
                 if host not in resolved:
-                    resolved[host] = resolver(host)
-                    if resolved[host] is None:
-                        rep.warn("openvpn/%s: cannot resolve %s; gluetun will refuse this remote line"
-                                 % (vpn.name, host))
+                    if host in previous and not refresh:
+                        resolved[host] = previous[host]
+                    else:
+                        answer = resolver(host)
+                        answers = sorted({answer} if isinstance(answer, str) else set(answer or ()),
+                                         key=ipaddress.ip_address)
+                        if answers:
+                            resolved[host] = answers[0]
+                            if previous.get(host) not in (None, answers[0]):
+                                rep.info("openvpn/%s: %s now resolves to %s (was %s)"
+                                         % (vpn.name, host, answers[0], previous[host]))
+                        elif host in previous:
+                            resolved[host] = previous[host]
+                            rep.warn("openvpn/%s: cannot resolve %s, keeping %s"
+                                     % (vpn.name, host, previous[host]))
+                        else:
+                            resolved[host] = None
+                            rep.warn("openvpn/%s: cannot resolve %s; gluetun will refuse this remote line"
+                                     % (vpn.name, host))
                 ip = resolved[host]
                 if ip:
                     line = "%s%s%s" % (m.group(1), ip, m.group(3))
-        out.append(line)
-    return "\n".join(out) + "\n"
+        body.append(line)
+    out = ["# " + GENERATED_BY,
+           "# Source: openvpn/%s/%s with remote hostnames resolved (gluetun needs IP addresses)."
+           % (vpn.name, vpn.ovpn.name)]
+    out += ["# resolved: %s -> %s" % (host, ip) for host, ip in sorted(resolved.items()) if ip]
+    return "\n".join(out + body) + "\n"
 
 
 # --------------------------------------------------------------------------
@@ -867,7 +908,7 @@ def file_differs(path: Path, content: str) -> bool:
 
 
 def generate(root: Path, squid_only: bool = False, rep: Optional[Reporter] = None,
-             resolver: Resolver = default_resolver) -> int:
+             resolver: Resolver = default_resolver, refresh_dns: bool = False) -> int:
     rep = rep or Reporter()
     template_path = root / "template" / "squid.conf"
     if not template_path.is_file():
@@ -913,7 +954,9 @@ def generate(root: Path, squid_only: bool = False, rep: Optional[Reporter] = Non
                 except (FileNotFoundError, UnicodeDecodeError):
                     mounted = vpn.ovpn.read_text(encoding="utf-8", errors="replace")
             else:
-                derived_confs[vpn.name] = render_gluetun_conf(vpn, resolver, rep)
+                derived_confs[vpn.name] = render_gluetun_conf(
+                    vpn, resolver, rep, previous_resolutions(root / "openvpn" / vpn.name / "gluetun.conf"),
+                    refresh=refresh_dns)
                 mounted = derived_confs[vpn.name]
         else:
             mounted = vpn.ovpn.read_text(encoding="utf-8", errors="replace")
@@ -969,10 +1012,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--squid-only", action="store_true",
                         help="only rewrite config/squid.conf (used by public_proxy_cron.sh before "
                              "`squid -k reconfigure`)")
+    parser.add_argument("--refresh-dns", action="store_true",
+                        help="resolve VPN remote host names again instead of reusing the addresses "
+                             "recorded in openvpn/<name>/gluetun.conf")
     parser.add_argument("-q", "--quiet", action="store_true", help="only print warnings and errors")
     args = parser.parse_args(argv)
     rep = Reporter(quiet=args.quiet)
-    return generate(args.root.resolve(), squid_only=args.squid_only, rep=rep)
+    return generate(args.root.resolve(), squid_only=args.squid_only, rep=rep, refresh_dns=args.refresh_dns)
 
 
 if __name__ == "__main__":
