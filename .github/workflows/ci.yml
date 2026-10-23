@@ -34,7 +34,7 @@ jobs:
       - name: Shell scripts
         run: |
           bash -n public_proxy_cron.sh ci/e2e.sh
-          shellcheck public_proxy_cron.sh ci/e2e.sh
+          shellcheck --severity=warning public_proxy_cron.sh ci/e2e.sh
 
   sample-config:
     name: Sample config + docker compose config

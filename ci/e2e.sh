@@ -164,7 +164,9 @@ log "rotation per request on one keep-alive connection"
 pair=$(curl -sS --noproxy '' --max-time 15 -x http://127.0.0.1:3128 "$ORIGIN" "$ORIGIN" | tr '\n' ' ')
 echo "answers: $pair"
 read -r a b <<<"$pair"
-[ -n "$a" ] && [ -n "$b" ] && [ "$a" != "$b" ] || fail "same upstream on keep-alive: $pair"
+if [ -z "$a" ] || [ -z "$b" ] || [ "$a" = "$b" ]; then
+  fail "same upstream on keep-alive: $pair"
+fi
 
 log "rotation with CONNECT tunnels (curl -p)"
 seq=()
