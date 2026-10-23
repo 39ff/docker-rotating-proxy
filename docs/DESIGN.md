@@ -173,6 +173,7 @@ CI runs the committed files unmodified.
 | gluetun | with the example `.ovpn` (host name) mounted: `ERROR … host is not an IP address: hk-hkg.prod.surfshark.com`; with the derived `gluetun.conf`: `[http proxy] listening on :8888` and OpenVPN connecting to the resolved IP. A real tunnel was not established (no credentials). |
 | env_file quoting | `docker compose` v5.6.1 + a real container: values with `$`, `${HOME}`, `'`, `"`, `\`, `#` arrive unchanged. |
 | unit tests | 36 tests pass on Python 3.8, 3.11, 3.12, 3.13. |
+| GitHub Actions | all jobs green on commit `e300d2a` (run 39996692886): unit (3.10, 3.13), generate + compose config + gost parse, `squid -k parse` in `b4tman/squid:7.5`, and the e2e with the real ports 3128/30000+, container names and `ulimits`. |
 
 Not verified: a real VPN tunnel through gluetun; IPv6 upstreams at runtime (Docker networks
 have no IPv6 by default; only `squid -k parse` and the generated config were checked); arm64
