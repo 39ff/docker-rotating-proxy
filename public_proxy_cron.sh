@@ -54,6 +54,8 @@ if ! docker compose exec -T squid squid -k parse -f "$SQUID_CONF" >/dev/null 2>&
 fi
 if ! out="$(docker compose exec -T squid squid -k reconfigure -f "$SQUID_CONF" 2>&1)"; then
   echo "$out" >&2
+  # Keep the file on disk in step with the config Squid is still running.
+  [ -s "$backup" ] && cp -p "$backup" config/squid.conf
   exit 1
 fi
 echo "public_proxy_cron: $(grep -c '^cache_peer' config/squid.conf) cache_peer(s) loaded"
