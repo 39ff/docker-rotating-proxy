@@ -7,28 +7,27 @@ gost-only design, and what was actually verified.
 ## 1. Architecture
 
 ```
-                         compose network 172.16.231.0/24 (PROXY_SUBNET)
-  ┌─────────────────────────────────────────────────────────────────────────────────────┐
-  │                                                                                     │
-  │  squid  (dockersquid_rotate, b4tman/squid:7.5)                                      │
-  │   http_port 3128, acl Allowed_IP, never_direct, round-robin, header scrubbing       │
-  │    │                                                                                │
-  │    ├── cache_peer HOST:PORT                     (public, httpsquid + login=) ───────┼──▶ HTTP proxies
-  │    ├── cache_peer HOST:PORT tls login=          (https, issue #23) ─────────────────┼──▶ HTTPS proxies
-  │    ├── cache_peer dockergost_rotate:3100k ──┐   (socks5, http)                      │
-  │    └── cache_peer dockervpn_N:8888 ─────────┼─┐ (one per openvpn/<name>/)           │
-  │                                             │ │                                     │
-  │  gost  (dockergost_rotate, gogost/gost:3.3.1, config/gost.yaml)                     │
-  │    peer-k    :3100k  internal, no admission ┤ │                                     │
-  │    static-k  :3000k  admission "allowlist" ─┴─┼─ chain-k ─ node HOST:PORT ──────────┼──▶ SOCKS5 / HTTP / HTTPS proxy
-  │    static-m  :3000m  admission "allowlist" ───┼─ chain-m ─ node dockervpn_N:8888 ─┐ │
-  │                                               ▼                                   │ │
-  │  gluetun (dockervpn_N, qmcgaw/gluetun:v3.41.3)  HTTP proxy :8888 ◀────────────────┘ │
-  │    OpenVPN + firewall kill switch ──────────────────────────────────────────────────┼──▶ VPN server
-  └─────────────────────────────────────────────────────────────────────────────────────┘
-        ▲ :3128                   ▲ :30000 … :3000x
-        │ ${BIND_ADDR:-0.0.0.0}   │ ${BIND_ADDR:-0.0.0.0}
-     clients (allowlisted by source IP; host-local clients appear as 172.16.231.1)
+                  compose network 172.16.231.0/24 (PROXY_SUBNET), ports on ${BIND_ADDR:-0.0.0.0}
+
+ clients ─ :3128 ─▶ squid (dockersquid_rotate, b4tman/squid:7.5)
+ (allowlisted)        acl Allowed_IP, never_direct, round-robin, header scrubbing
+                      ├─ cache_peer HOST:PORT                public, httpsquid (login=) ──────▶ HTTP proxy
+                      ├─ cache_peer HOST:PORT tls login=     https (issue #23) ───────────────▶ HTTPS proxy
+                      ├─ cache_peer dockergost_rotate:3100k  socks5, http ───┐
+                      └─ cache_peer dockervpn_N:8888         VPN ────────────┼──────────┐
+                                                                             │          │
+                    gost (dockergost_rotate, gogost/gost:3.3.1)              │          │
+                      peer-k   :3100k  internal, no admission ◀──────────────┘          │
+                         └─ chain-k ─ node HOST:PORT (socks5 / http / tls+http) ──────────────▶ SOCKS5 / HTTP / HTTPS proxy
+ clients ─ :3000k ─▶  static-k :3000k  admission "allowlist" ─ chain-k (same chain)     │
+ (allowlisted)        static-m :3000m  admission "allowlist" ─ chain-m ─ dockervpn_N:8888 ─┐
+                                                                                        │  │
+                    gluetun (dockervpn_N, qmcgaw/gluetun:v3.41.3)                       │  │
+                      HTTP proxy :8888 (not published) ◀────────────────────────────────┴──┘
+                      OpenVPN + firewall kill switch ─────────────────────────────────────────▶ VPN server
+
+ Host-local clients reach the published ports through Docker's port forwarding and
+ appear with the gateway address 172.16.231.1, which template/allowed_ip.txt allows.
 ```
 
 | request | path | allowlist enforced by |

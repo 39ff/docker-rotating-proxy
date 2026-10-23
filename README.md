@@ -9,14 +9,11 @@ A self-hosted rotating proxy, configured from a plain text list.
 - Request headers that reveal the proxy (`Via`, `X-Forwarded-For`) are removed; nothing is cached.
 
 ```
-                          docker compose project (network 172.16.231.0/24)
-                ┌──────────────────────────────────────────────────────────────┐
- client ──3128──┼─▶ squid (rotating, allowlist) ── round-robin cache_peers ───┐ │
-                │      │  public / httpsquid / https(TLS) ───────────────────┼─┼─▶ upstream proxies
-                │      │  socks5 / http ─▶ gost :31000+ (internal) ──────────┤ │
-                │      │  vpn ───────────▶ gluetun dockervpn_N :8888 ────────┼─┼─▶ VPN servers
- client ─30000+─┼─▶ gost static-N (allowlist) ─▶ one upstream or one VPN ────┘ │
-                └──────────────────────────────────────────────────────────────┘
+client ── :3128 ───▶ Squid ── round-robin ──┬──▶ public / httpsquid / https proxies ──┐
+(allowlisted)                               ├──▶ gost ──▶ socks5 / http proxies ─────┤
+                                            └──▶ gluetun (OpenVPN) ──────────────────┼──▶ Internet
+client ── :30000+ ─▶ gost: one port = one upstream or one VPN ───────────────────────┘
+(allowlisted)
 ```
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the design, the trade-offs and what is verified by CI.
