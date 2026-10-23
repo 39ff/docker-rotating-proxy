@@ -1,0 +1,9 @@
+# Optional client authentication for every port (3128 and 30000+).
+# One "username password" per line, '#' starts a comment.
+# As long as this file has no user, no username/password is required (the
+# IP allowlist in allowed_ip.txt still applies).
+# Usernames must not contain ':'; neither part may contain whitespace,
+# quotes or backslashes.
+#
+# Example:
+# alice correct-horse-battery-staple

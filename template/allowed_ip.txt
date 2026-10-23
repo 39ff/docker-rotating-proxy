@@ -1,4 +1,18 @@
+# Client allowlist: one IPv4/IPv6 address or CIDR per line, '#' starts a
+# comment. Only matching clients can use ANY port (3128 and 30000+).
+# setup/generate.py validates this file and writes config/allowed_ip.txt;
+# gost re-reads that copy every 30 seconds.
+#
+# Clients on the docker host itself. Connections to 127.0.0.1:<port> reach
+# the container from the docker network gateway (e.g. 172.18.0.1), which is
+# covered by 172.16.0.0/12 / 192.168.0.0/16 below.
 127.0.0.1
-172.17.0.1
-172.21.0.1
-172.24.0.1
+::1
+# Private networks: docker bridge gateways and LAN clients. This mirrors the
+# "localnet" rule of the old Squid config. Remove what you do not need.
+10.0.0.0/8
+172.16.0.0/12
+192.168.0.0/16
+# Add your own public IP address(es), e.g. (check yours at http://httpbin.org/ip)
+# 93.184.216.34
+# 108.62.57.53
