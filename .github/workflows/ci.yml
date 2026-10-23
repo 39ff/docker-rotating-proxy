@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit tests (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Byte-compile
+        run: python -m py_compile setup/generate.py setup/tests/test_generate.py .github/e2e/origin.py .github/e2e/probe.py
+      - name: Unit tests
+        run: python -m unittest discover -s setup/tests -v
+      - name: Shell syntax
+        run: |
+          for f in public_proxy_cron.sh .github/e2e/run.sh .github/ci/sample-inputs.sh; do bash -n "$f"; done
+
+  generate:
+    name: generate + docker compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Sample inputs (every scheme, public list, example VPNs)
+        run: .github/ci/sample-inputs.sh
+      - name: Generate (host python)
+        run: python3 setup/generate.py
+      - name: Generated files are gitignored
+        run: |
+          git status --porcelain --untracked-files=all
+          if git status --porcelain --untracked-files=all | grep -E 'config/|docker-compose\.yml|gluetun\.(env|conf)|publicProxyList|secret'; then
+            echo "generated or secret files are not ignored" >&2; exit 1
+          fi
+      - name: Generate again in python:3.13-alpine, output must be identical
+        run: |
+          mkdir -p /tmp/first
+          cp config/squid.conf config/gost.yaml config/allowed_ip.txt docker-compose.yml /tmp/first/
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/app" -w /app python:3.13-alpine python3 setup/generate.py
+          for f in squid.conf gost.yaml allowed_ip.txt; do cmp "config/$f" "/tmp/first/$f"; done
+          cmp docker-compose.yml /tmp/first/docker-compose.yml
+      - name: docker compose config
+        run: |
+          docker compose config -q
+          docker compose config --services
+      - name: No credentials in docker-compose.yml
+        run: |
+          if grep -n -E 'p@ss|b0b-secret|c\$rol|d4ve|e%r|yourSurfShark|yourNordVPN' docker-compose.yml; then
+            echo "credentials leaked into docker-compose.yml" >&2; exit 1
+          fi
+      - name: gost parses config/gost.yaml
+        run: |
+          docker run --rm -v "$PWD/config:/etc/gost:ro" gogost/gost:3.3.1 -C /etc/gost/gost.yaml -O json > /tmp/gost.json
+          python3 - <<'PY'
+          import json
+          cfg = json.load(open("/tmp/gost.json"))
+          adm = {a["name"]: a for a in cfg["admissions"]}
+          assert adm["allowlist"]["whitelist"] is True, adm
+          services = {s["name"]: s for s in cfg["services"]}
+          static = sorted(n for n in services if n.startswith("static-"))
+          assert len(static) == 7, static  # 4 socks/http + 1 https + 2 VPNs
+          for name in static:
+              assert services[name].get("admission") == "allowlist", services[name]
+          for name, svc in services.items():
+              if name.startswith("peer-"):
+                  assert "admission" not in svc and svc["addr"].startswith(":310"), svc
+          print("gost: %d services, %d chains, allowlist whitelist=true" % (len(services), len(cfg["chains"])))
+          PY
+
+  squid-parse:
+    name: squid -k parse (pinned Squid 7 image)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Sample inputs and generate
+        run: |
+          .github/ci/sample-inputs.sh
+          python3 setup/generate.py
+      - name: squid -k parse
+        run: |
+          image=$(python3 -c 'import sys; sys.path.insert(0, "setup"); import generate; print(generate.SQUID_IMAGE)')
+          echo "image: $image"
+          status=0
+          docker run --rm -v "$PWD/config:/etc/squid/rotating:ro" "$image" \
+            squid -k parse -f /etc/squid/rotating/squid.conf > /tmp/parse.log 2>&1 || status=$?
+          cat /tmp/parse.log
+          if grep -n -E 'FATAL|ERROR|WARNING|Bungled' /tmp/parse.log; then
+            echo "squid reported problems" >&2; exit 1
+          fi
+          exit "$status"
+
+  e2e:
+    name: e2e (docker compose, Squid + gost + upstream fixtures)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: End-to-end test
+        run: .github/e2e/run.sh

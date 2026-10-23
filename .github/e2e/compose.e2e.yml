@@ -1,0 +1,75 @@
+# Test fixtures for .github/e2e/run.sh, merged on top of the generated
+# docker-compose.yml (COMPOSE_FILE=docker-compose.yml:.github/e2e/compose.e2e.yml).
+# All fixtures sit on the generated default network (172.16.231.0/24) with
+# fixed addresses, so the origin can tell which upstream a request used.
+services:
+  squid:
+    environment:
+      # Trust the test CA for the TLS cache_peer (OpenSSL honours SSL_CERT_FILE).
+      SSL_CERT_FILE: /e2e-certs/ca.pem
+    volumes:
+      - ./.e2e/certs:/e2e-certs:ro
+  gost:
+    environment:
+      SSL_CERT_FILE: /e2e-certs/ca.pem
+    volumes:
+      - ./.e2e/certs:/e2e-certs:ro
+
+  up-alice:  # socks5, password p@ss%w/rd
+    image: gogost/gost:3.3.1
+    command: ["-L", "socks5://alice:p%40ss%25w%2Frd@:1080"]
+    networks:
+      default:
+        ipv4_address: 172.16.231.201
+  up-bob:  # socks5, password b0b:pw
+    image: gogost/gost:3.3.1
+    command: ["-L", "socks5://bob:b0b%3Apw@:1080"]
+    networks:
+      default:
+        ipv4_address: 172.16.231.202
+  up-erin:  # http proxy with auth, used through gost
+    image: gogost/gost:3.3.1
+    command: ["-L", "http://erin:erin-pw@:8080"]
+    networks:
+      default:
+        ipv4_address: 172.16.231.203
+  up-public:  # open http proxy, added later through publicProxyList.txt
+    image: gogost/gost:3.3.1
+    command: ["-L", "http://:3128"]
+    networks:
+      default:
+        ipv4_address: 172.16.231.204
+  up-dave:  # HTTPS proxy (TLS to the proxy itself), issue #23
+    image: gogost/gost:3.3.1
+    command: ["-L", "https://dave:dave-pw@:8443?certFile=/certs/server.pem&keyFile=/certs/server.key"]
+    volumes:
+      - ./.e2e/certs:/certs:ro
+    networks:
+      default:
+        ipv4_address: 172.16.231.205
+        aliases: [secure-upstream.test]
+  up-carol:  # httpsquid, password c%l:o@n+e/= (checks login= encoding)
+    image: gogost/gost:3.3.1
+    command: ["-L", "http://carol:c%25l%3Ao%40n%2Be%2F%3D@:3128"]
+    networks:
+      default:
+        ipv4_address: 172.16.231.206
+
+  origin:
+    image: python:3.13-alpine
+    command: ["python3", "/e2e/origin.py"]
+    volumes:
+      - ./.github/e2e:/e2e:ro
+      - ./.e2e/certs:/certs:ro
+    networks:
+      default:
+        ipv4_address: 172.16.231.210
+
+  outsider:  # a client whose address is NOT on the allowlist
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    volumes:
+      - ./.github/e2e:/e2e:ro
+    networks:
+      default:
+        ipv4_address: 172.16.231.250
