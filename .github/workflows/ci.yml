@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Unit tests in python:${{ matrix.python }}-alpine
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e PYTHONDONTWRITEBYTECODE=1 \
+            -v "$PWD:/src" -w /src "python:${{ matrix.python }}-alpine" sh -euc '
+              python3 --version
+              python3 -c "import ast; ast.parse(open(\"setup/generate.py\").read())"
+              python3 -m unittest discover -s setup/tests -v
+            '
+      - name: Shell scripts
+        run: |
+          bash -n public_proxy_cron.sh ci/e2e.sh
+          shellcheck public_proxy_cron.sh ci/e2e.sh
+
+  sample-config:
+    name: Sample config + docker compose config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Generate from the sample inputs (documented docker invocation)
+        # --no-resolve: do not depend on the DNS of the example VPN hostname.
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/app" -w /app \
+            python:3.13-alpine python3 setup/generate.py --no-resolve
+      - name: Second run is a no-op (idempotent)
+        run: |
+          python3 setup/generate.py --no-resolve | tee second-run.txt
+          grep -q "Nothing that needs a restart changed" second-run.txt
+          rm second-run.txt
+      - name: Generated files are git-ignored
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"
+      - name: docker compose config
+        run: |
+          docker compose config -q
+          BIND_ADDR=127.0.0.1 docker compose config | grep -q 'host_ip: 127.0.0.1'
+          if grep -n '^version:' docker-compose.yml; then exit 1; fi
+          # no credentials in the compose file (they live in env_file / config/)
+          if grep -nE 'OPENVPN_(USER|PASSWORD)|yourNordVPN|unlimited' docker-compose.yml; then exit 1; fi
+      - name: gost accepts the generated config
+        run: |
+          docker run -d --name gost-check -v "$PWD/config:/etc/gost:ro" \
+            "$(sed -n 's/^ *image: "\(gogost[^"]*\)"/\1/p' docker-compose.yml)" -C /etc/gost/gost.yaml
+          for _ in $(seq 1 30); do
+            docker exec gost-check wget -q -O /dev/null http://127.0.0.1:9000/metrics && break
+            sleep 1
+          done
+          docker exec gost-check wget -q -O /dev/null http://127.0.0.1:9000/metrics
+          docker logs gost-check 2>&1 | tee gost.log
+          for port in 3128 30000 30001 30002 30003 30004; do
+            grep -qE "listening on (0\.0\.0\.0|\[::\]):$port/tcp" gost.log || { echo "port $port not listening"; exit 1; }
+          done
+          test "$(docker inspect -f '{{.State.Running}}' gost-check)" = true
+      - name: gost logs on failure
+        if: failure()
+        run: docker logs gost-check || true
+
+  e2e:
+    name: End-to-end (docker compose)
+    runs-on: ubuntu-latest
+    needs: unit
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Pull images
+        run: |
+          for i in 1 2 3; do docker pull gogost/gost:3.3.1 && break; sleep $((i * 5)); done
+      - name: Run ci/e2e.sh
+        run: ci/e2e.sh

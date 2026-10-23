@@ -1,0 +1,10 @@
+# Used by ci/e2e.sh only: attach gost to the network of the test upstreams.
+services:
+  gost:
+    networks:
+      - default
+      - e2e
+networks:
+  e2e:
+    name: rp-e2e
+    external: true
