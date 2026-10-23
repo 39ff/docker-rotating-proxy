@@ -319,9 +319,11 @@ class GenerateTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    vpn_ip = "192.0.2.10"
+
     def resolver(self, host):
         self.resolved.append(host)
-        return "192.0.2.10" if host == "vpn.example.com" else None
+        return self.vpn_ip if host == "vpn.example.com" else None
 
     def run_gen(self, squid_only=False):
         rep = quiet_reporter()
@@ -514,6 +516,38 @@ class GenerateTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("remote unknown.invalid 443", (self.root / "openvpn/v/gluetun.conf").read_text())
         self.assertTrue(any("cannot resolve unknown.invalid" in w for w in rep.warnings))
+
+    def test_vpn_label_follows_resolved_remote(self):
+        self.write("proxyList.txt", "1.2.3.4:1080:socks5:u:p\n")
+        ovpn = self.add_vpn("v", "vpn.example.com")
+        self.assertEqual(self.run_gen()[0], 0)
+        compose1 = (self.root / "docker-compose.yml").read_text()
+        source_before = ovpn.read_text()
+
+        # Same .ovpn, new DNS answer: gluetun.conf and the vpn label change so
+        # that `docker compose up -d` recreates the VPN; squid and gost do not.
+        self.vpn_ip = "192.0.2.20"
+        self.assertEqual(self.run_gen()[0], 0)
+        compose2 = (self.root / "docker-compose.yml").read_text()
+        self.assertEqual(ovpn.read_text(), source_before)
+        self.assertIn("remote 192.0.2.20 443", (self.root / "openvpn/v/gluetun.conf").read_text())
+        labels1 = [l.strip() for l in compose1.splitlines() if "config-hash" in l]
+        labels2 = [l.strip() for l in compose2.splitlines() if "config-hash" in l]
+        self.assertEqual(len(labels1), 3)
+        self.assertEqual([a == b for a, b in zip(labels1, labels2)], [True, True, False])
+
+    def test_squid_only_does_not_resolve_vpn_hosts(self):
+        self.write("proxyList.txt", "1.2.3.4:1080:socks5:u:p\n")
+        self.add_vpn("v", "vpn.example.com")
+        self.assertEqual(self.run_gen()[0], 0)
+        compose = (self.root / "docker-compose.yml").read_text()
+        self.resolved = []
+        self.vpn_ip = "192.0.2.30"  # a DNS change must not affect the cron path
+        rc, rep = self.run_gen(squid_only=True)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.resolved, [])
+        self.assertFalse(any("out of date" in w for w in rep.warnings), rep.warnings)
+        self.assertEqual((self.root / "docker-compose.yml").read_text(), compose)
 
     def test_cli_main(self):
         self.write("proxyList.txt", "1.2.3.4:80\n")

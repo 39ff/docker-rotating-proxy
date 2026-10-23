@@ -900,8 +900,24 @@ def generate(root: Path, squid_only: bool = False, rep: Optional[Reporter] = Non
         "squid": config_hash(template, allowlist, *plan.squid_peers_fixed),
         "gost": config_hash(gost_yaml),
     }
+    # The VPN label must follow the file that is actually mounted. For a .ovpn
+    # with hostnames that is the derived gluetun.conf, whose resolved IPs can
+    # change between runs while the source file stays the same.
+    derived_confs: Dict[str, str] = {}
     for vpn in vpns:
-        hashes[vpn.service] = config_hash(vpn.ovpn.read_text(encoding="utf-8", errors="replace"))
+        if vpn.needs_derived_config:
+            if squid_only:
+                # The cron path must not depend on DNS: hash what is mounted now.
+                try:
+                    mounted = (root / "openvpn" / vpn.name / "gluetun.conf").read_text(encoding="utf-8")
+                except (FileNotFoundError, UnicodeDecodeError):
+                    mounted = vpn.ovpn.read_text(encoding="utf-8", errors="replace")
+            else:
+                derived_confs[vpn.name] = render_gluetun_conf(vpn, resolver, rep)
+                mounted = derived_confs[vpn.name]
+        else:
+            mounted = vpn.ovpn.read_text(encoding="utf-8", errors="replace")
+        hashes[vpn.service] = config_hash(mounted)
     compose = render_compose(plan, hashes)
 
     config_dir = root / "config"
@@ -929,7 +945,7 @@ def generate(root: Path, squid_only: bool = False, rep: Optional[Reporter] = Non
         if vpn.user is not None:
             outputs.append((vdir / "gluetun.env", render_gluetun_env(vpn), 0o600))
         if vpn.needs_derived_config:
-            outputs.append((vdir / "gluetun.conf", render_gluetun_conf(vpn, resolver, rep), 0o600))
+            outputs.append((vdir / "gluetun.conf", derived_confs[vpn.name], 0o600))
 
     for path, content, mode in outputs:
         changed = write_file(path, content, mode)

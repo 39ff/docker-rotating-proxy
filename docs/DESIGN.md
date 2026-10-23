@@ -127,9 +127,12 @@ isolates the change to "replace gost v2 containers by one gost v3 container".
   allowlisted clients are not limited to ports 80/443.
 - **Recreate on config change.** Compose does not look at the content of bind-mounted files,
   so each generated service carries a label `rotating-proxy.config-hash` (Squid: template +
-  allowlist + non-public peers; gost: `gost.yaml`; VPN: the user's `.ovpn`). `docker compose up -d`
-  then recreates exactly the services whose config changed. Peers from `publicProxyList.txt`
-  are excluded from Squid's hash so the hourly cron never forces a recreate.
+  allowlist + non-public peers; gost: `gost.yaml`; VPN: the file that is mounted, i.e. the
+  derived `gluetun.conf` when the `.ovpn` uses hostnames, so a changed DNS answer recreates the
+  VPN container too). `docker compose up -d` then recreates exactly the services whose config
+  changed. Peers from `publicProxyList.txt` are excluded from Squid's hash so the hourly cron
+  never forces a recreate, and `--squid-only` hashes the `gluetun.conf` already on disk instead
+  of resolving DNS again.
 - **`retry_on_error on`** is new. It is what makes the gost hop tolerable (see the table in
   section 3), but it changes what clients see: a 403/500/501/503 relayed from an origin is
   retried on other peers before it reaches the client. Scrapers that rely on seeing those codes
