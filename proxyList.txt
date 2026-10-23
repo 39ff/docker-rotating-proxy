@@ -1,3 +1,19 @@
-159.89.206.161:2434:socks5:vpn:unlimited
-142.93.68.63:2434:socks5:vpn:unlimited
-82.196.7.200:2434:socks5:vpn:unlimited
+# One upstream per line:  host:port[:scheme[:username:password]]
+#
+#   scheme     what it is                          rotating 3128   static port
+#   (empty)    public HTTP proxy, no auth          yes (Squid)     no
+#   httpsquid  HTTP proxy, Squid sends login=      yes (Squid)     no
+#   http       HTTP proxy                          yes (via gost)  yes (gost)
+#   socks5     SOCKS5 proxy                        yes (via gost)  yes (gost)
+#   https      HTTP proxy reached over TLS         yes (Squid TLS) yes (gost TLS)
+#
+# IPv6 hosts go in brackets: [2001:db8::1]:1080:socks5:user:pass
+# The password may contain ':' but no whitespace, quotes or '#'.
+# Lines starting with '#' are ignored. Run `python3 setup/generate.py` after editing.
+#
+# Examples:
+# 203.0.113.10:1080:socks5:yourUsername:yourPassword
+# 203.0.113.11:8080:http:yourUsername:yourPassword
+# proxy.example.com:443:https:yourUsername:yourPassword
+# zproxy.example.net:22225:httpsquid:yourUsername:yourPassword
+# 198.51.100.7:3128
