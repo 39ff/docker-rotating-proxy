@@ -226,7 +226,8 @@ All on 2026-10-23, Docker 29.9.2 + compose v5.6.1, with the pinned images.
    - the generator skipped an invalid line and a CRLF duplicate with warnings
    The run takes about 2 minutes. Locally `nofile=65536` could not be granted
    (sandbox hard limit 20000), so a local-only override lowered it
-   (`E2E_EXTRA_COMPOSE`); CI runs the generated file unchanged.
+   (`E2E_EXTRA_COMPOSE`). On GitHub Actions (run 39995021057, all four jobs
+   green) the generated file ran unchanged and produced the same answers.
 2. **Fail-open without the sentinel** (host gost binary 3.3.1 copied from the
    image): same config with `nodes.json = []`; without the `fail-closed` node
    the request returned `HTTP 200` via a direct connection, with it `HTTP 503`
