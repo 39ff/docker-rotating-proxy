@@ -947,16 +947,15 @@ def generate(root: Path, squid_only: bool = False, rep: Optional[Reporter] = Non
     derived_confs: Dict[str, str] = {}
     for vpn in vpns:
         if vpn.needs_derived_config:
+            previous = previous_resolutions(root / "openvpn" / vpn.name / "gluetun.conf")
             if squid_only:
-                # The cron path must not depend on DNS: hash what is mounted now.
-                try:
-                    mounted = (root / "openvpn" / vpn.name / "gluetun.conf").read_text(encoding="utf-8")
-                except (FileNotFoundError, UnicodeDecodeError):
-                    mounted = vpn.ovpn.read_text(encoding="utf-8", errors="replace")
+                # The cron path must not depend on DNS: render from the .ovpn
+                # with the recorded addresses only, so an edited .ovpn (or a
+                # host without a record) shows up as "out of date" below.
+                mounted = render_gluetun_conf(vpn, lambda host: None,
+                                              Reporter(stream=io.StringIO(), quiet=True), previous)
             else:
-                derived_confs[vpn.name] = render_gluetun_conf(
-                    vpn, resolver, rep, previous_resolutions(root / "openvpn" / vpn.name / "gluetun.conf"),
-                    refresh=refresh_dns)
+                derived_confs[vpn.name] = render_gluetun_conf(vpn, resolver, rep, previous, refresh=refresh_dns)
                 mounted = derived_confs[vpn.name]
         else:
             mounted = vpn.ovpn.read_text(encoding="utf-8", errors="replace")

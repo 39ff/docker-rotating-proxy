@@ -578,6 +578,17 @@ class GenerateTest(unittest.TestCase):
         self.assertIn("remote 192.0.2.5 443", conf.read_text())
         self.assertTrue(any("keeping 192.0.2.5" in w for w in rep.warnings), rep.warnings)
 
+    def test_squid_only_detects_edited_vpn_source(self):
+        self.write("proxyList.txt", "1.2.3.4:1080:socks5:u:p\n")
+        ovpn = self.add_vpn("v", "vpn.example.com")
+        self.assertEqual(self.run_gen()[0], 0)
+        ovpn.write_text(ovpn.read_text() + "verb 4\n")
+        self.resolved = []
+        rc, rep = self.run_gen(squid_only=True)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.resolved, [])
+        self.assertTrue(any("out of date" in w for w in rep.warnings), rep.warnings)
+
     def test_squid_only_does_not_resolve_vpn_hosts(self):
         self.write("proxyList.txt", "1.2.3.4:1080:socks5:u:p\n")
         self.add_vpn("v", "vpn.example.com")

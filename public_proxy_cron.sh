@@ -27,6 +27,12 @@ if [ -n "$PUBLIC_PROXY_URL" ]; then
     echo "public_proxy_cron: downloaded list is empty, keeping the previous one" >&2
     exit 1
   fi
+  # A 200 response that is not a host:port list (an HTML error page, for
+  # example) must not replace the previous list either.
+  if ! grep -Eq '^[[:space:]]*(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+):[0-9]{1,5}[[:space:]]*$' "$tmp"; then
+    echo "public_proxy_cron: downloaded list contains no host:port lines, keeping the previous one" >&2
+    exit 1
+  fi
   chmod 644 "$tmp"
   mv -f "$tmp" publicProxyList.txt
 fi
