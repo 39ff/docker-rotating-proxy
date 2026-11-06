@@ -167,7 +167,7 @@ echo "$probe" | python3 -c '
 import json, sys
 p = json.load(sys.stdin)
 rot = p["rotating"]
-assert rot["ok"] == rot["total"] == 4, rot
+assert rot["ok"] == rot["total"] == 6, rot
 assert len(rot["ips"]) >= 2, "no rotation: %s" % rot
 want = {30000: "172.16.231.201", 30001: "172.16.231.202", 30002: "172.16.231.205", 30003: "172.16.231.203"}
 got = {s["port"]: s.get("ip") for s in p["static"]}

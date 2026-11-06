@@ -152,16 +152,18 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 550; }
 .check input { margin-top: 3px; width: 16px; height: 16px; }
 .inline-fields { display: grid; grid-template-columns: 2fr 2fr auto; gap: 10px; align-items: end; }
-@media (max-width: 640px) { .inline-fields { grid-template-columns: 1fr; } }
+.url-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+@media (max-width: 640px) { .inline-fields, .url-row { grid-template-columns: 1fr; } }
 
 /* --- tables ------------------------------------------------------------ */
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+td.wrap { white-space: normal; min-width: 180px; }
 th { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--panel-2); white-space: nowrap; }
 tr:last-child td { border-bottom: 0; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-td .mono { word-break: break-all; }
+td.wrap .mono { word-break: break-all; }
 .empty { padding: 18px; color: var(--muted); text-align: center; }
 
 /* --- badges ------------------------------------------------------------ */

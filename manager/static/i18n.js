@@ -66,6 +66,7 @@ window.I18N = {
     "overview.staticHint": "One port = one upstream. For browser sessions that need the same IP.",
     "overview.upstreams": "In rotation",
     "overview.services": "Services",
+    "overview.otherServices": "{n} more container(s) from your compose overrides",
     "overview.endpoints": "Endpoints",
     "overview.test": "Test now",
     "overview.testing": "Testing…",
@@ -118,6 +119,7 @@ window.I18N = {
     "allow.value": "IP address or network (CIDR)",
     "allow.comment": "Note (optional)",
     "allow.system": "needed by this server",
+    "allow.you": "you",
     "allow.address": "Address",
     "allow.note": "Note",
 
@@ -213,6 +215,7 @@ window.I18N = {
     "overview.staticHint": "1ポート＝1上流。同じIPを使い続けたいブラウザ操作向け。",
     "overview.upstreams": "ローテーション中",
     "overview.services": "サービス",
+    "overview.otherServices": "compose の追加設定によるコンテナ {n} 件",
     "overview.endpoints": "接続先",
     "overview.test": "今すぐテスト",
     "overview.testing": "テスト中…",
@@ -265,6 +268,7 @@ window.I18N = {
     "allow.value": "IPアドレスまたはネットワーク（CIDR）",
     "allow.comment": "メモ（任意）",
     "allow.system": "このサーバ自身に必要",
+    "allow.you": "あなた",
     "allow.address": "アドレス",
     "allow.note": "メモ",
 
@@ -292,6 +296,28 @@ window.I18N = {
     "snip.playwright": "Playwright",
     "snip.mcp": "MCP（Claude Code）",
     "snip.rotating": "# ローテーション: リクエストごとに出口IPが変わる",
-    "snip.sticky": "# 固定: 常にポート {port} の上流から出る"
+    "snip.sticky": "# 固定: 常にポート {port} の上流から出る",
+
+    "err.bad_token": "初期設定用のトークンが違います。install.sh が表示したURLを使ってください（サーバで `docker logs rotating_proxy_manager` を実行すると再表示できます）。",
+    "err.weak_password": "パスワードは10文字以上にしてください。",
+    "err.bad_password": "パスワードが違います。",
+    "err.rate_limited": "ログインの失敗が続いています。しばらく待ってからやり直してください。",
+    "err.setup_done": "管理パスワードは設定済みです。",
+    "err.setup_required": "先に初期設定をしてください。",
+    "err.login_required": "ログインしてください。",
+    "err.bad_ip": "IPアドレスまたはCIDRとして読めません。",
+    "err.open_proxy": "これを許可すると、インターネット上の誰でもプロキシを使えてしまいます。",
+    "err.system_entry": "このアドレスはサーバ自身（同じホスト上のクライアントやヘルスチェック）が使うため削除できません。",
+    "err.stale": "ファイルが別の場所で変更されました。再読み込みしてからやり直してください。",
+    "err.busy": "別の処理を実行中です。",
+    "err.exists": "同じ名前のVPNがすでにあります。",
+    "err.no_remote": "OpenVPN のクライアント設定ではないようです（remote 行がありません）。",
+    "err.bad_name": "名前には英数字と . _ - だけを使ってください（64文字まで）。",
+    "err.half_credentials": "ユーザー名とパスワードは両方入力するか、両方空にしてください。",
+    "err.bad_credentials": "認証情報はそれぞれ1行で入力してください。",
+    "err.too_large": "データが大きすぎます。",
+    "err.bad_url": "http://、https://、file:// のURLを指定してください。",
+    "err.csrf": "リクエストを拒否しました。ページを再読み込みしてください。",
+    "err.internal": "内部エラーです。管理コンテナのログを確認してください。"
   }
 };

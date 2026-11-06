@@ -57,7 +57,8 @@
     try { data = await res.json(); } catch (e) { /* empty body */ }
     if (!res.ok) {
       if (res.status === 401 && data.error === "login_required") { renderLogin(); }
-      throw Object.assign(new Error(data.message || res.statusText), { code: data.error, status: res.status, data });
+      const local = data.error && (window.I18N[LANG] || {})["err." + data.error];
+      throw Object.assign(new Error(local || data.message || res.statusText), { code: data.error, status: res.status, data });
     }
     return data;
   }
@@ -141,9 +142,9 @@
             h("td", null, r.user ? h("span", { class: "mono" }, r.user + (r.has_password ? ":•••" : "")) : h("span", { class: "muted" }, "—")),
             h("td", null, r.static ? "✓" : h("span", { class: "muted small" }, t("up.rotationOnly"))),
             h("td", { class: "small muted" }, r.format))
-          : h("tr", null, h("td", null, h("span", { class: "badge bad" }, "✗")),
-            h("td", { colspan: "3" }, h("span", { class: "mono" }, r.input)),
-            h("td", { class: "small" }, h("span", { class: "muted" }, r.error))))))));
+          : h("tr", null, h("td", null, h("span", { class: "badge bad plain" }, "✗")),
+            h("td", { colspan: "3", class: "wrap" }, h("span", { class: "mono" }, r.input)),
+            h("td", { class: "small wrap" }, h("span", { class: "muted" }, r.error))))))));
   }
 
   function upstreamAdder(opts) {
@@ -395,11 +396,15 @@
   function wizUpstreams() {
     const err = h("div");
     const next = h("button", { class: "primary", type: "button" }, t("common.next"));
+    const label = (rows) => {
+      const ok = (rows || []).filter((r) => r.ok).length;
+      next.textContent = ok ? t("up.addCount", { n: ok }) + " →" : t("common.next");
+    };
     const adder = upstreamAdder({ text: W.adder.text, scheme: W.adder.scheme, rows: W.adder.rows, onChange: (st) => {
       W.adder = { text: st.text, scheme: st.scheme, rows: st.rows };
-      const ok = (st.rows || []).filter((r) => r.ok).length;
-      next.textContent = ok ? t("up.addCount", { n: ok }) + " → " : t("common.next");
+      label(st.rows);
     } });
+    label(W.adder.rows);
     next.onclick = async () => {
       next.disabled = true; err.replaceChildren();
       try {
@@ -416,52 +421,79 @@
   }
 
   function wizStart() {
-    const summary = h("p", { class: "muted" }, t("common.loading"));
+    const summary = h("div", { class: "field" }, h("p", { class: "muted" }, t("common.loading")));
+    const stat = (label, value) => h("div", { class: "card stat" }, h("div", { class: "label" }, label), h("div", { class: "value" }, value));
     const area = h("div");
     const start = h("button", { class: "primary big", type: "button" }, t("setup.start"));
     Promise.all([api("GET", "/api/overview"), api("GET", "/api/allowlist")]).then(([ov, al]) => {
-      summary.textContent = t("setup.summary", { upstreams: ov.peers - ov.counts.vpn, static: ov.static_ports.length,
-        vpn: ov.counts.vpn, allow: al.entries.filter((e) => !e.invalid).length });
+      summary.replaceChildren(h("div", { class: "grid grid-4" },
+        stat(t("nav.upstreams"), ov.peers - ov.counts.vpn), stat(t("overview.static"), ov.static_ports.length),
+        stat(t("nav.vpn"), ov.counts.vpn), stat(t("nav.allowlist"), al.entries.filter((e) => !e.invalid).length)));
       W.ov = ov;
-    }).catch((e) => { summary.textContent = e.message; });
+    }).catch((e) => { summary.replaceChildren(h("div", { class: "callout bad" }, e.message)); });
+
+    // W.run survives a redraw (language switch): {state: "running"|"failed"|"done", log, ov}
+    const back = h("button", { type: "button", class: "ghost", onclick: () => { W.run = null; setStep(3); } }, t("common.back"));
+    const status = h("div");
+    const pre = h("pre", { class: "code log" });
+    const logBox = h("details", null, h("summary", null, t("job.showLog")), pre);
+    const results = h("div");
+    const draw = () => {
+      const run = W.run;
+      if (!run) { area.replaceChildren(); return; }
+      pre.textContent = run.log || "";
+      pre.scrollTop = pre.scrollHeight;
+      start.classList.toggle("hidden", run.state === "done");
+      back.classList.toggle("hidden", run.state !== "failed");
+      start.disabled = run.state === "running";
+      if (run.state === "running") {
+        status.replaceChildren(h("div", { class: "callout info" }, h("span", { class: "spinner" }), h("span", { class: "grow" }, t("setup.starting"))));
+      } else if (run.state === "failed") {
+        status.replaceChildren(h("div", { class: "callout bad" }, h("span", { class: "grow" }, t("setup.failed"))));
+        logBox.open = true;
+      } else {
+        status.replaceChildren(h("div", { class: "callout ok" }, h("strong", { class: "grow" }, "✓ " + t("setup.done"))));
+      }
+      if (run.state === "done" && run.ov) {
+        results.replaceChildren(h("div", { class: "field" }), endpointsCard(run.ov), h("div", { class: "field" }),
+          h("h3", null, t("overview.useIt")), h("div", { class: "field" }),
+          snippets(proxyHost(run.ov), run.ov.static_ports.length ? run.ov.static_ports[0].port : null),
+          h("div", { class: "actions" }, h("button", { class: "primary open-dashboard", type: "button", onclick: () => {
+            W.run = null; storageSet("sessionStorage", "rpx.wizard", null); location.hash = "#/overview"; appStart();
+          } }, t("setup.openDashboard"))));
+      } else if (run.state === "done") {
+        results.replaceChildren(h("p", { class: "muted" }, h("span", { class: "spinner" }), " ", t("overview.testing")));
+      } else {
+        results.replaceChildren();
+      }
+      area.replaceChildren(status, h("div", { class: "field" }), logBox, results);
+    };
+    const redraw = () => { if (rerender === renderWizard && W.step === 4) renderWizard(); };
 
     start.onclick = async () => {
-      start.disabled = true;
       let job;
+      W.run = { state: "running", log: "" };
+      draw();
       try { job = await api("POST", "/api/apply", {}); } catch (e) {
         if (e.code === "busy" && e.data && e.data.job) job = await api("GET", "/api/jobs/" + e.data.job);
-        else { area.replaceChildren(h("div", { class: "callout bad" }, e.message)); start.disabled = false; return; }
+        else { W.run = { state: "failed", log: e.message }; redraw(); return; }
       }
-      const status = h("div", { class: "callout info" }, h("span", { class: "spinner" }), h("span", { class: "grow" }, t("setup.starting")));
-      const pre = h("pre", { class: "code log" });
-      const logBox = h("details", null, h("summary", null, t("job.showLog")), pre);
-      area.replaceChildren(status, h("div", { class: "field" }), logBox);
-      const done = await followJob(job, (j) => { pre.textContent = j.log; pre.scrollTop = pre.scrollHeight; });
-      if (done.status !== "succeeded") {
-        status.className = "callout bad"; status.replaceChildren(h("span", { class: "grow" }, t("setup.failed")));
-        logBox.open = true; start.disabled = false;
-        return;
-      }
-      status.className = "callout ok";
-      status.replaceChildren(h("strong", { class: "grow" }, "✓ " + t("setup.done")));
-      const results = h("div", null, h("p", { class: "muted" }, h("span", { class: "spinner" }), " ", t("overview.testing")));
-      area.append(h("div", { class: "field" }), results);
-      start.classList.add("hidden");
-      let ov = W.ov;
+      const done = await followJob(job, (j) => { if (W.run) { W.run.log = j.log; pre.textContent = j.log; pre.scrollTop = pre.scrollHeight; } });
+      if (done.status !== "succeeded") { W.run = { state: "failed", log: done.log }; redraw(); return; }
+      W.run = { state: "done", log: done.log };
+      redraw();
+      let ov = null;
       try {
         const probe = await api("POST", "/api/probe", {});
         ov = await api("GET", "/api/overview");
         ov.last_probe = probe;
-      } catch (e) { /* shown below */ }
-      results.replaceChildren(endpointsCard(ov, { compact: true }), h("div", { class: "field" }),
-        h("h3", null, t("overview.useIt")), h("div", { class: "field" }),
-        snippets(proxyHost(ov), ov && ov.static_ports.length ? ov.static_ports[0].port : null),
-        h("div", { class: "actions" }, h("button", { class: "primary", type: "button", onclick: () => {
-          storageSet("sessionStorage", "rpx.wizard", null); location.hash = "#/overview"; appStart();
-        } }, t("setup.openDashboard"))));
+      } catch (e) { ov = W.ov || null; }
+      W.run.ov = ov || { static_ports: [], rotating_port: 3128 };
+      redraw();
     };
+    draw();
     return h("div", null, h("h2", null, t("setup.step4")), h("p", { class: "lead" }, t("setup.startIntro")), summary,
-      area, h("div", { class: "actions" }, h("button", { type: "button", class: "ghost", onclick: () => setStep(3) }, t("common.back")), start));
+      area, h("div", { class: "actions" }, back, start));
   }
 
   // ----------------------------------------------------------------------
@@ -543,7 +575,7 @@
     const rows = (ov ? ov.static_ports : []).map((sp) => {
       const r = byPort[sp.port];
       return h("tr", null, h("td", { class: "num" }, h("strong", { class: "mono" }, sp.port)),
-        h("td", null, h("span", { class: "small" }, sp.description)),
+        h("td", { class: "wrap" }, h("span", { class: "small" }, sp.description)),
         h("td", null, r ? (r.ok ? h("span", { class: "mono" }, r.ip) : h("span", { class: "small muted" }, r.error)) : h("span", { class: "muted" }, "—")),
         h("td", { class: "num" }, r && r.ok ? r.ms + " ms" : ""),
         h("td", null, r ? h("span", { class: "badge " + (r.ok ? "ok" : "bad") }, r.ok ? "OK" : "NG") : ""));
@@ -569,8 +601,12 @@
     try { ov = await api("GET", "/api/overview"); } catch (e) { if (!quiet) main.replaceChildren(h("div", { class: "callout bad" }, e.message)); return; }
     if (OV && OV.last_probe && !ov.last_probe) ov.last_probe = OV.last_probe;
     OV = ov;
-    const services = ov.compose.services;
+    const isCore = (s) => s.service === "squid" || s.service === "gost" || /^vpn\d+$/.test(s.service);
+    const services = ov.compose.services.filter(isCore);
+    const others = ov.compose.services.filter((s) => !isCore(s));
     const healthy = services.filter((s) => s.state === "running" && (s.health === "healthy" || s.health === "")).length;
+    const svcRow = (s) => h("tr", null, h("td", null, h("strong", null, s.service)), h("td", { class: "small muted" }, s.name),
+      h("td", null, healthBadge(s)));
     const stat = (label, value, hint) => h("div", { class: "card stat" }, h("div", { class: "label" }, label), h("div", { class: "value" }, value), hint ? h("div", { class: "hint" }, hint) : null);
     const c = ov.counts;
     main.replaceChildren(h("div", { class: "stack" },
@@ -585,9 +621,9 @@
       endpointsCard(ov),
       h("div", { class: "grid grid-2" },
         h("div", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, t("overview.services"))),
-          services.length ? h("div", { class: "table-wrap" }, h("table", null, h("tbody", null, services.map((s) =>
-            h("tr", null, h("td", null, h("strong", null, s.service)), h("td", { class: "small muted" }, s.name),
-              h("td", null, healthBadge(s))))))) : h("div", { class: "empty" }, "—")),
+          services.length ? h("div", { class: "table-wrap" }, h("table", null, h("tbody", null, services.map(svcRow)))) : h("div", { class: "empty" }, "—"),
+          others.length ? h("details", null, h("summary", { class: "small" }, t("overview.otherServices", { n: others.length })),
+            h("div", { class: "table-wrap" }, h("table", null, h("tbody", null, others.map(svcRow))))) : null),
         h("div", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, t("overview.useIt"))),
           snippets(proxyHost(ov), ov.static_ports.length ? ov.static_ports[0].port : null))),
       ov.warnings.length ? h("div", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, t("overview.warnings")),
@@ -646,15 +682,15 @@
           h("tbody", null, rows))) : h("div", { class: "empty table-wrap" }, t("common.none"))),
       data.invalid.length ? h("div", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, t("up.invalid"))),
         h("div", { class: "table-wrap" }, h("table", null, h("tbody", null, data.invalid.map((e) => h("tr", null,
-          h("td", { class: "num muted small" }, e.line), h("td", null, h("span", { class: "mono" }, e.text)),
-          h("td", { class: "small muted" }, e.error),
+          h("td", { class: "num muted small" }, e.line), h("td", { class: "wrap" }, h("span", { class: "mono" }, e.text)),
+          h("td", { class: "small muted wrap" }, e.error),
           h("td", null, h("button", { class: "small danger", type: "button", onclick: async () => {
             try { await api("POST", "/api/upstreams/delete", { ids: [e.id] }); renderApp(); } catch (ex) { toast(ex.message, "bad"); }
           } }, t("common.delete"))))))))) : null,
       h("div", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, t("up.public")),
         h("span", { class: "sub" }, t("up.publicCount", { n: data.public_count }))),
         h("p", { class: "small muted" }, t("up.publicIntro")),
-        h("div", { class: "inline-fields" }, h("div", { class: "field" }, h("label", null, t("up.publicUrl")), publicUrl), h("div"), h("div", { class: "field" }, pubBtn)))));
+        h("label", null, t("up.publicUrl")), h("div", { class: "url-row" }, publicUrl, pubBtn))));
   }
 
   // ---- allowlist -------------------------------------------------------
@@ -690,8 +726,8 @@
             if (ev.target.checked) selected.add(e.id); else selected.delete(e.id); delBtn.disabled = !selected.size;
           } })),
           h("td", null, h("span", { class: "mono" }, e.value), e.invalid ? h("span", { class: "badge bad" }, "invalid") : null),
-          h("td", { class: "small muted" }, e.comment),
-          h("td", null, e.system ? h("span", { class: "badge plain" }, t("allow.system")) : e.value === ip ? h("span", { class: "badge info plain" }, "you") : null)))))))));
+          h("td", { class: "small muted wrap" }, e.comment),
+          h("td", null, e.system ? h("span", { class: "badge plain" }, t("allow.system")) : e.value === ip ? h("span", { class: "badge info plain" }, t("allow.you")) : null)))))))));
   }
 
   // ---- vpn -------------------------------------------------------------

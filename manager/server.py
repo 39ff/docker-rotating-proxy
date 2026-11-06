@@ -59,6 +59,7 @@ MAX_BODY = 2 * 1024 * 1024
 MAX_OVPN = 256 * 1024
 BACKUPS_KEPT = 30
 CSRF_HEADER = "X-RPX-Request"
+ROTATION_PROBES = 6  # requests through port 3128 per test
 
 DEFAULT_PROBE_URL = "https://api.ipify.org"
 _IP_IN_TEXT = re.compile(r"[0-9A-Fa-f:.]{3,45}")
@@ -138,8 +139,9 @@ def system_allowlist_entries(cfg: Config) -> List[str]:
 # --------------------------------------------------------------------------
 
 
-def hash_password(password: str, salt: Optional[bytes] = None, iterations: int = PBKDF2_ITERATIONS) -> Dict:
+def hash_password(password: str, salt: Optional[bytes] = None, iterations: Optional[int] = None) -> Dict:
     salt = salt or secrets.token_bytes(16)
+    iterations = iterations or PBKDF2_ITERATIONS
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
     return {"algorithm": "pbkdf2_sha256", "iterations": iterations,
             "salt": base64.b64encode(salt).decode(), "hash": base64.b64encode(digest).decode()}
@@ -707,15 +709,25 @@ def run_logged(job: Job, cmd: List[str], cwd: Path, env: Optional[Dict[str, str]
     except OSError as exc:
         job.log("error: %s" % exc)
         return 127
-    deadline = time.time() + timeout
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        job.log(line)
-        if time.time() > deadline:
-            proc.kill()
-            job.log("error: timed out after %d s" % timeout)
-            break
-    return proc.wait()
+    timed_out = threading.Event()
+
+    def kill():
+        timed_out.set()
+        proc.kill()
+
+    timer = threading.Timer(timeout, kill)  # also fires when the command prints nothing
+    timer.start()
+    try:
+        with proc:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                job.log(line)
+            rc = proc.wait()
+    finally:
+        timer.cancel()
+    if timed_out.is_set():
+        job.log("error: timed out after %d s" % timeout)
+    return rc
 
 
 def apply_job(cfg: Config, state: "State") -> Callable[[Job], bool]:
@@ -808,7 +820,7 @@ def probe_once(cfg: Config, port: int, timeout: float = 10.0) -> Dict:
 
 def run_probe(cfg: Config) -> Dict:
     info = compute_plan(cfg)
-    targets: List[Tuple[str, int, str]] = [("rotating", generate.SQUID_PORT, "rotation")] * 4
+    targets: List[Tuple[str, int, str]] = [("rotating", generate.SQUID_PORT, "rotation")] * ROTATION_PROBES
     for sp in info["plan"].static_ports:
         targets.append(("static", sp.port, sp.description))
     with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
@@ -953,11 +965,26 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def read_json(self) -> Dict:
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > MAX_BODY:
+    def _read_body(self) -> None:
+        """Read the whole request body up front: a body left unread on a
+        keep-alive connection would be parsed as the start of the next request."""
+        self._body = b""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self.close_connection = True
+            raise ApiError(HTTPStatus.BAD_REQUEST, "bad_length", "Bad Content-Length.")
+        if length < 0 or length > MAX_BODY:
+            self.close_connection = True
             raise ApiError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "too_large", "Request too large.")
-        raw = self.rfile.read(length) if length else b""
+        if self.headers.get("Transfer-Encoding"):
+            self.close_connection = True
+            raise ApiError(HTTPStatus.LENGTH_REQUIRED, "length_required", "Send a Content-Length.")
+        if length:
+            self._body = self.rfile.read(length)
+
+    def read_json(self) -> Dict:
+        raw = getattr(self, "_body", b"")
         if not raw:
             return {}
         try:
@@ -1008,6 +1035,7 @@ class Handler(BaseHTTPRequestHandler):
     def _dispatch(self, method: str) -> None:
         path = urllib.parse.urlsplit(self.path).path
         try:
+            self._read_body()
             if method == "GET" and not path.startswith("/api/"):
                 return self._static(path)
             if not path.startswith("/api/"):
@@ -1252,7 +1280,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     host, port = server.server_address[:2]
     print("rotating-proxy manager on http://%s:%d (root %s)" % (host, port, cfg.root), flush=True)
     if state.auth.setup_required():
-        shown = "<this-server>" if host in ("0.0.0.0", "::") else host
+        shown = cfg.public_host or ("<this-server>" if host in ("0.0.0.0", "::") else host)
+        if ":" in shown and not shown.startswith("["):
+            shown = "[%s]" % shown
         print("first-time setup: http://%s:%d/setup?token=%s" % (shown, port, state.auth.setup_token()),
               flush=True)
     try:
