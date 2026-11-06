@@ -1,0 +1,34 @@
+# Web UI for docker-rotating-proxy. install.sh writes manager/.env and runs
+#   docker compose -f manager/compose.yml up -d --build
+# See docs/MANAGER.md.
+name: rotating-proxy-manager
+
+services:
+  manager:
+    build: .
+    image: rotating-proxy-manager:local
+    container_name: rotating_proxy_manager
+    restart: unless-stopped
+    # Host network: the UI sees the real address of your browser (for "allow
+    # my address") and reaches the published proxy ports on 127.0.0.1 like any
+    # local client (the proxy sees the compose gateway, which is allowlisted).
+    network_mode: host
+    command: ["python3", "${RPX_ROOT:?RPX_ROOT must point at the checkout}/manager/server.py", "--root", "${RPX_ROOT}"]
+    working_dir: "${RPX_ROOT}"
+    environment:
+      RPX_LISTEN: "${RPX_BIND:-0.0.0.0}:${RPX_PORT:-8080}"
+      RPX_PUBLIC_HOST: "${RPX_PUBLIC_HOST:-}"
+      RPX_PROBE_URL: "${RPX_PROBE_URL:-https://api.ipify.org}"
+      RPX_TRUST_FORWARDED: "${RPX_TRUST_FORWARDED:-}"
+    volumes:
+      # Full control of Docker on this host (root-equivalent): protect the UI.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same path inside and outside the container: docker compose, run from
+      # here, hands bind-mount paths such as ./config to the host's daemon.
+      - "${RPX_ROOT}:${RPX_ROOT}"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:${RPX_PORT:-8080}/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
