@@ -7,6 +7,8 @@ A self-hosted rotating proxy, configured from a plain text list.
 - Upstreams can be public HTTP proxies, HTTP/HTTPS proxies with or without credentials, SOCKS5 proxies (converted to HTTP by one [gost v3](https://gost.run/) container) and OpenVPN configs (each run in a [gluetun](https://github.com/qdm12/gluetun) container).
 - Access is limited by client IP address on every published port, so programs can use the proxy without credentials.
 - Request headers that reveal the proxy (`Via`, `X-Forwarded-For`) are removed; nothing is cached.
+- Optional **web UI**: one command on a fresh server, then paste your proxies in the browser
+  ([docs/MANAGER.md](docs/MANAGER.md)).
 
 ```
 client ── :3128 ───▶ Squid ── round-robin ──┬──▶ public / httpsquid / https proxies ──┐
@@ -18,7 +20,28 @@ client ── :30000+ ─▶ gost: one port = one upstream or one VPN ───�
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the design, the trade-offs and what is verified by CI.
 
-## Quick start
+## Quick start with the web UI
+
+On a Linux server (Ubuntu, Debian, ...), as root:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/39ff/docker-rotating-proxy/master/install.sh | sudo sh
+```
+
+It installs Docker if needed, puts this repository in `/opt/docker-rotating-proxy`, starts the web UI and prints a
+one-time setup link. Open it, choose an admin password, allow your address, paste your proxies (any of
+`host:port:user:pass`, `user:pass@host:port`, `socks5://user:pass@host:port`, ...) and press **Start**.
+
+<img src="docs/images/manager/install.png" alt="install.sh output with the setup link" width="640">
+
+| paste your proxies | running, with the exit IP of every port |
+|---|---|
+| <img src="docs/images/manager/wizard-upstreams.png" alt="Setup wizard: pasted proxies are recognised" width="420"> | <img src="docs/images/manager/overview.png" alt="Dashboard: rotating port, static ports with exit IPs, services, examples" width="420"> |
+
+The web UI edits the same files as the command-line flow below, so both can be used side by side. Details, HTTPS
+and SSH-only access, cloud-init and the security model: [docs/MANAGER.md](docs/MANAGER.md).
+
+## Quick start (command line)
 
 Requirements: Docker with the Compose plugin (`docker compose`), and Python 3.8+ or Docker to run the generator.
 
@@ -209,12 +232,15 @@ containers with placeholder credentials.
 
 ```sh
 python3 -m unittest discover -s setup/tests -v   # unit tests (stdlib only)
+python3 -m unittest discover -s manager/tests -v # web UI unit tests (stdlib only)
 .github/e2e/run.sh                               # end-to-end test; overwrites proxyList.txt, use a scratch checkout
+.github/e2e/manager.sh                           # web UI end-to-end test; same, use a scratch checkout
 ```
 
 CI (`.github/workflows/ci.yml`) runs the unit tests, generates a sample configuration and checks it with
 `docker compose config`, `gost -O json` and `squid -k parse` in the pinned Squid image, and runs the end-to-end test
-with two SOCKS5 upstreams, an HTTP and an HTTPS upstream, the allowlist and the cron reload path.
+with two SOCKS5 upstreams, an HTTP and an HTTPS upstream, the allowlist and the cron reload path, and a second
+end-to-end test that drives the same stack through the web UI container.
 
 ## License
 
