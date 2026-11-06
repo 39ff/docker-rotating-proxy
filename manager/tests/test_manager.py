@@ -242,6 +242,44 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "rate_limited")
         self.assertTrue(self.auth.valid(self.auth.login("long enough password", "198.51.100.2")))
 
+    def test_password_check_does_not_block_sessions(self):
+        # Regression: PBKDF2 used to run under Auth.lock, which valid() (every
+        # authenticated request) also takes; failed logins could stall the UI.
+        session = self.auth.complete_setup(self.auth.setup_token(), "long enough password")
+        started, release = threading.Event(), threading.Event()
+        real_verify = server.verify_password
+
+        def slow_verify(password, record):
+            started.set()
+            release.wait(5)
+            return real_verify(password, record)
+
+        server.verify_password = slow_verify
+        try:
+            results = []
+            workers = [threading.Thread(target=lambda: results.append(self._try_login("wrong")))
+                       for _ in range(server.LOGIN_CONCURRENCY + 1)]
+            for w in workers:
+                w.start()
+            self.assertTrue(started.wait(5))
+            t0 = time.monotonic()
+            self.assertTrue(self.auth.valid(session))
+            self.assertLess(time.monotonic() - t0, 0.5)
+            time.sleep(0.2)  # let the extra login hit the concurrency limit
+            release.set()
+            for w in workers:
+                w.join(5)
+        finally:
+            server.verify_password = real_verify
+        self.assertEqual(sorted(results), sorted(["bad_password"] * server.LOGIN_CONCURRENCY + ["busy_login"]))
+
+    def _try_login(self, password):
+        try:
+            self.auth.login(password, "198.51.100.3")
+            return "ok"
+        except server.ApiError as exc:
+            return exc.code
+
 
 class HttpTests(unittest.TestCase):
     """The HTTP layer, with a fake docker CLI."""
@@ -341,6 +379,16 @@ class HttpTests(unittest.TestCase):
         self.assertFalse(self.request("GET", "/api/overview")[1]["pending"])
         self.request("POST", "/api/upstreams/add", {"text": "5.6.7.8:80:u:p", "default_scheme": "http"})
         self.assertTrue(self.request("GET", "/api/overview")[1]["pending"])
+
+    def test_forwarded_client_address(self):
+        self.state.cfg.trust_forwarded = True
+        self.login()
+        hdrs = {"X-Forwarded-For": "203.0.113.1, 198.51.100.77", "CF-Connecting-IP": "192.0.2.99"}
+        self.assertEqual(self.request("GET", "/api/session", headers=hdrs)[1]["client_ip"], "198.51.100.77")
+        self.assertEqual(self.request("GET", "/api/session", headers={"CF-Connecting-IP": "192.0.2.99"})[1]["client_ip"],
+                         "127.0.0.1")
+        self.state.cfg.trust_forwarded = False
+        self.assertEqual(self.request("GET", "/api/session", headers=hdrs)[1]["client_ip"], "127.0.0.1")
 
     def test_bad_inputs(self):
         self.login()

@@ -43,7 +43,8 @@ curl -fsSL https://raw.githubusercontent.com/39ff/docker-rotating-proxy/master/i
 | `RPX_SETUP_TOKEN` | random | choose the setup token yourself (cloud-init) |
 | `RPX_NO_DOCKER_INSTALL` | | `1` = do not install Docker |
 
-Running `install.sh` again updates the checkout and restarts the UI; your settings are kept. Because the UI code is
+Running `install.sh` again updates the checkout and restarts the UI. Settings you do not pass again are taken from
+`manager/.env`, and other lines there (`RPX_TRUST_FORWARDED`, `RPX_PROBE_URL`, ...) are kept. Because the UI code is
 read from the checkout (the image only contains Python and the docker CLI), `git pull` followed by
 `docker restart rotating_proxy_manager` is enough to update it by hand.
 
@@ -73,7 +74,8 @@ docker logs rotating_proxy_manager      # prints the setup link
 ```
 
 `RPX_ROOT` must be an absolute path: the checkout is mounted at the same path inside the container, because
-`docker compose` (run from inside) hands bind-mount paths such as `./config` to the host's Docker daemon.
+`docker compose` (run from inside) hands bind-mount paths such as `./config` to the host's Docker daemon. The manager
+runs as root, so the files it writes (`config/`, `docker-compose.yml`, `.manager/`) belong to root.
 
 ## First run
 
@@ -165,9 +167,10 @@ preference:
    ```
 
    and in `manager/.env`: `RPX_BIND=127.0.0.1`, `RPX_TRUST_FORWARDED=1`, `RPX_PUBLIC_HOST=<server IP or name>`.
-   `RPX_TRUST_FORWARDED` makes the UI take the client address from `X-Forwarded-For` / `CF-Connecting-IP`, but only for
-   requests that come from the loopback address, and marks the session cookie `Secure` when
-   `X-Forwarded-Proto: https`.
+   `RPX_TRUST_FORWARDED` makes the UI take the client address from the last `X-Forwarded-For` entry (the one the proxy
+   in front appended), but only for requests that come from the loopback address, and marks the session cookie
+   `Secure` when `X-Forwarded-Proto: https`. Other headers such as `CF-Connecting-IP` are ignored: a proxy that does
+   not set them passes a client's own value through.
 3. **Cloudflare Tunnel** (no open port): run `cloudflared` with an ingress rule to `http://127.0.0.1:8080`, protect the
    hostname with Cloudflare Access, and use the same three settings as above. Set `RPX_PUBLIC_HOST` to the server's
    address: the proxy ports themselves are not behind the tunnel.
@@ -184,7 +187,9 @@ The UI is designed around that:
   rotating_proxy_manager`), so nobody else can claim a freshly installed server. It is compared in constant time and
   deleted after use. Pages send `Referrer-Policy: no-referrer`, and the page removes the token from the address bar.
 - **Password.** PBKDF2-SHA256 with 600,000 iterations and a random salt in `.manager/auth.json` (`0600`). After 5
-  failed logins from one address, further attempts are delayed exponentially (up to 15 minutes).
+  failed logins from one address, further attempts are delayed exponentially (up to 15 minutes). At most two
+  passwords are checked at the same time (others get `429`), and never while holding the lock that every
+  authenticated request needs.
 - **Sessions.** 256-bit random tokens kept in memory for 7 days (a restart logs everyone out), cookie `HttpOnly`,
   `SameSite=Strict`, `Secure` behind an HTTPS proxy.
 - **CSRF.** Every POST needs the header `X-RPX-Request: 1` (which a cross-site form cannot send) and, when the browser

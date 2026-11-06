@@ -22,15 +22,13 @@ set -eu
 RPX_DIR="${RPX_DIR:-/opt/docker-rotating-proxy}"
 RPX_REPO="${RPX_REPO:-https://github.com/39ff/docker-rotating-proxy.git}"
 RPX_REF="${RPX_REF:-master}"
-RPX_PORT="${RPX_PORT:-8080}"
-RPX_BIND="${RPX_BIND:-0.0.0.0}"
 
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[33mwarning:\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || die "run as root, e.g.: curl -fsSL <url> | sudo sh"
-case "$RPX_PORT" in ''|*[!0-9]*) die "RPX_PORT must be a number" ;; esac
+case "${RPX_PORT:-8080}" in *[!0-9]*) die "RPX_PORT must be a number" ;; esac
 
 install_pkg() { # install_pkg NAME
   if command -v apt-get >/dev/null 2>&1; then
@@ -71,6 +69,18 @@ fi
 # Upstream credentials end up in this directory.
 chmod 700 "$RPX_DIR"
 
+# Settings: environment variable, else the value from an earlier install
+# (manager/.env), else the default. Re-running without RPX_BIND must not turn
+# an SSH-only UI into a public one.
+envf="$RPX_DIR/manager/.env"
+old_env() { if [ -f "$envf" ]; then sed -n "s/^$1=//p" "$envf" | tail -n 1; fi; }
+RPX_BIND="${RPX_BIND:-$(old_env RPX_BIND)}"
+RPX_BIND="${RPX_BIND:-0.0.0.0}"
+RPX_PORT="${RPX_PORT:-$(old_env RPX_PORT)}"
+RPX_PORT="${RPX_PORT:-8080}"
+RPX_PUBLIC_HOST="${RPX_PUBLIC_HOST:-$(old_env RPX_PUBLIC_HOST)}"
+case "$RPX_PORT" in *[!0-9]*) die "RPX_PORT must be a number" ;; esac
+
 # --- Setup token ------------------------------------------------------------
 state="$RPX_DIR/.manager"
 mkdir -p "$state"
@@ -94,13 +104,19 @@ if [ -z "$public_host" ]; then
   case "$public_host" in *[!0-9A-Fa-f:.]*|'') public_host="$(hostname -I 2>/dev/null | awk '{print $1}')" ;; esac
 fi
 
-cat > "$RPX_DIR/manager/.env" <<EOF
-# Written by install.sh; read by docker compose -f manager/compose.yml
-RPX_ROOT=$RPX_DIR
-RPX_BIND=$RPX_BIND
-RPX_PORT=$RPX_PORT
-RPX_PUBLIC_HOST=$public_host
-EOF
+# Other settings in manager/.env (RPX_TRUST_FORWARDED, RPX_PROBE_URL, ...) are kept.
+extra=""
+if [ -f "$envf" ]; then
+  extra="$(grep -vE '^(#|$|RPX_ROOT=|RPX_BIND=|RPX_PORT=|RPX_PUBLIC_HOST=)' "$envf" || true)"
+fi
+{
+  echo "# Written by install.sh; read by docker compose -f manager/compose.yml"
+  echo "RPX_ROOT=$RPX_DIR"
+  echo "RPX_BIND=$RPX_BIND"
+  echo "RPX_PORT=$RPX_PORT"
+  echo "RPX_PUBLIC_HOST=$public_host"
+  if [ -n "$extra" ]; then printf '%s\n' "$extra"; fi
+} > "$envf"
 
 # --- Start the web UI -------------------------------------------------------
 say "Starting the web UI"
@@ -127,16 +143,16 @@ shown="$public_host"
 case "$shown" in *:*) shown="[$shown]" ;; esac
 echo
 say "docker-rotating-proxy is installed in $RPX_DIR"
-if [ -n "$token" ]; then
-  if [ "$RPX_BIND" = 127.0.0.1 ] || [ "$RPX_BIND" = ::1 ]; then
-    echo "The web UI only listens on this server. From your computer, run:"
-    echo "  ssh -L $RPX_PORT:127.0.0.1:$RPX_PORT <user>@$public_host"
-    echo "then open:"
-    echo "  http://127.0.0.1:$RPX_PORT/setup?token=$token"
-  else
-    echo "Open this link to finish the setup (the token works once):"
-    echo "  http://${shown:-<server-ip>}:$RPX_PORT/setup?token=$token"
-  fi
+path="/"
+if [ -n "$token" ]; then path="/setup?token=$token"; fi
+if [ "$RPX_BIND" = 127.0.0.1 ] || [ "$RPX_BIND" = ::1 ]; then
+  echo "The web UI only listens on this server. From your computer, run:"
+  echo "  ssh -L $RPX_PORT:127.0.0.1:$RPX_PORT <user>@${shown:-<server-ip>}"
+  echo "then open:"
+  echo "  http://127.0.0.1:$RPX_PORT$path"
+elif [ -n "$token" ]; then
+  echo "Open this link to finish the setup (the token works once):"
+  echo "  http://${shown:-<server-ip>}:$RPX_PORT$path"
 else
   echo "Web UI: http://${shown:-<server-ip>}:$RPX_PORT/ (already set up)"
 fi

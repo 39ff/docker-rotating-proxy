@@ -24,6 +24,9 @@ MCOMPOSE=(docker compose -f manager/compose.yml)
 step() { printf '\n=== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 ok() { printf 'ok: %s\n' "$*"; }
+# .manager/ is created by the manager, which runs as root, with mode 0700:
+# look at it from inside the container, as an unprivileged runner cannot.
+mexec() { "${MCOMPOSE[@]}" exec -T manager "$@"; }
 
 on_exit() {
   rc=$?
@@ -82,7 +85,7 @@ rm -rf .e2e && mkdir -p .e2e/certs && (
 git checkout -- proxyList.txt template/allowed_ip.txt 2>/dev/null || true
 rm -f publicProxyList.txt docker-compose.yml
 find openvpn -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
-rm -rf .manager
+rm -rf .manager 2>/dev/null || docker run --rm -v "$ROOT:$ROOT" python:3.13-alpine rm -rf "$ROOT/.manager"
 # The proxy stack picks up the upstream fixtures through COMPOSE_FILE in .env,
 # exactly as a user's own additions would be picked up.
 printf 'COMPOSE_FILE=docker-compose.yml:.github/e2e/compose.e2e.yml%s\n' "${E2E_EXTRA_COMPOSE:+:$E2E_EXTRA_COMPOSE}" > .env
@@ -98,7 +101,7 @@ step "start the manager"
 build=--build
 [ "${E2E_MANAGER_BUILD:-1}" = 0 ] && build=--no-build
 "${MCOMPOSE[@]}" up -d "$build" --quiet-pull --wait --wait-timeout 120
-token=$(cat .manager/setup_token)
+token=$(mexec cat "$ROOT/.manager/setup_token")
 [ -n "$token" ] || fail "no setup token written"
 "${MCOMPOSE[@]}" logs --no-color | grep -q "setup?token=$token" || fail "setup URL not in the manager log"
 ok "manager is up, setup URL is in the log"
@@ -111,8 +114,8 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: applicat
   --data '{"token":"wrong","password":"0123456789abc"}' "$BASE/api/setup")
 [ "$code" = 403 ] || fail "wrong token should be 403, got $code"
 api POST /api/setup "{\"token\":\"$token\",\"password\":\"e2e password 123\"}" >/dev/null
-[ ! -e .manager/setup_token ] || fail "setup token not removed after setup"
-[ "$(stat -c %a .manager/auth.json)" = 600 ] || fail ".manager/auth.json should be 0600"
+mexec test ! -e "$ROOT/.manager/setup_token" || fail "setup token not removed after setup"
+[ "$(mexec stat -c %a "$ROOT/.manager/auth.json")" = 600 ] || fail ".manager/auth.json should be 0600"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/overview")
 [ "$code" = 401 ] || fail "overview without a session should be 401, got $code"
 ok "setup token, CSRF header and session checks"
@@ -179,7 +182,7 @@ step "delete an upstream, apply again"
 id=$(api GET /api/upstreams | json '[e["id"] for e in d["entries"] if e["host"] == "172.16.231.202"][0]')
 api POST /api/upstreams/delete "{\"ids\":[\"$id\"]}" >/dev/null
 grep -q '172.16.231.202' proxyList.txt && fail "line not deleted"
-ls .manager/backups/proxyList.txt.* >/dev/null || fail "no backup written"
+mexec sh -c 'ls "$1"/.manager/backups/proxyList.txt.*' _ "$ROOT" >/dev/null || fail "no backup written"
 wait_job "$(api POST /api/apply)"
 [ "$(api GET /api/overview | json 'len(d["static_ports"])')" = 3 ] || fail "expected 3 static ports after delete"
 ok "delete + apply"

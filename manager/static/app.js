@@ -160,12 +160,13 @@
       } catch (e) { previewBox.replaceChildren(h("div", { class: "callout bad" }, e.message)); }
       opts.onChange && opts.onChange(st);
     }, 300);
+    const changed = () => { if (opts.onInput) opts.onInput(st); refresh(); };
     const ta = h("textarea", { placeholder: t("up.placeholder"), spellcheck: "false", value: st.text,
-      oninput: (e) => { st.text = e.target.value; refresh(); } });
+      oninput: (e) => { st.text = e.target.value; changed(); } });
     const el = h("div", null,
       h("div", { class: "field" }, h("label", null, t("up.paste")), ta),
       h("div", { class: "field" }, h("label", null, t("up.defaultType")),
-        schemeSelect(st.scheme, (v) => { st.scheme = v; refresh(); })),
+        schemeSelect(st.scheme, (v) => { st.scheme = v; changed(); })),
       previewBox);
     if (st.text && !st.rows) refresh();
     return { el, st };
@@ -204,15 +205,37 @@
   function proxyHost(ov) { return (ov && ov.public_host) || location.hostname; }
 
   // Poll a job until it finishes. onUpdate(job) is called on every poll.
+  // A job the server no longer knows (404, e.g. after a manager restart) or
+  // 30 failed polls in a row end as "failed" instead of spinning forever.
   async function followJob(job, onUpdate) {
     let current = job;
+    let failures = 0;
     onUpdate(current);
     while (current.status === "running") {
       await new Promise((r) => setTimeout(r, 1000));
-      try { current = await api("GET", "/api/jobs/" + current.id); } catch (e) { if (e.code === "login_required") return current; continue; }
+      try {
+        current = await api("GET", "/api/jobs/" + current.id);
+        failures = 0;
+      } catch (e) {
+        if (e.code === "login_required") return current;
+        if (e.status === 404 || ++failures >= 30) {
+          current = Object.assign({}, current, { status: "failed", log: (current.log || "") + "\n" + e.message });
+          onUpdate(current);
+          return current;
+        }
+        continue;
+      }
       onUpdate(current);
     }
     return current;
+  }
+
+  // POST /api/apply; when another job is already running, follow that one.
+  async function requestApply() {
+    try { return await api("POST", "/api/apply", {}); } catch (e) {
+      if (e.code === "busy" && e.data && e.data.job) return api("GET", "/api/jobs/" + e.data.job);
+      throw e;
+    }
   }
 
   function jobStatusBadge(status) {
@@ -237,10 +260,7 @@
 
   async function startApply(onDone) {
     let job;
-    try { job = await api("POST", "/api/apply", {}); } catch (e) {
-      if (e.code === "busy" && e.data && e.data.job) job = await api("GET", "/api/jobs/" + e.data.job);
-      else { toast(e.message, "bad"); return; }
-    }
+    try { job = await requestApply(); } catch (e) { toast(e.message, "bad"); return; }
     openJobModal(job, "job.apply", onDone);
   }
 
@@ -372,7 +392,7 @@
     const add = h("button", { type: "button", onclick: async () => {
       err.replaceChildren();
       const f = file.files && file.files[0];
-      if (!f) { err.replaceChildren(h("div", { class: "callout bad" }, t("vpn.file"))); return; }
+      if (!f) { err.replaceChildren(h("div", { class: "callout bad" }, t("vpn.fileRequired"))); return; }
       add.disabled = true;
       try {
         const content = await f.text();
@@ -400,15 +420,18 @@
       const ok = (rows || []).filter((r) => r.ok).length;
       next.textContent = ok ? t("up.addCount", { n: ok }) + " →" : t("common.next");
     };
-    const adder = upstreamAdder({ text: W.adder.text, scheme: W.adder.scheme, rows: W.adder.rows, onChange: (st) => {
-      W.adder = { text: st.text, scheme: st.scheme, rows: st.rows };
-      label(st.rows);
-    } });
+    const adder = upstreamAdder({ text: W.adder.text, scheme: W.adder.scheme, rows: W.adder.rows,
+      onInput: (st) => { W.adder = { text: st.text, scheme: st.scheme, rows: null }; },
+      onChange: (st) => {
+        W.adder = { text: st.text, scheme: st.scheme, rows: st.rows };
+        label(st.rows);
+      } });
     label(W.adder.rows);
     next.onclick = async () => {
       next.disabled = true; err.replaceChildren();
+      const st = adder.st;  // not W.adder: the preview that updates it is debounced
       try {
-        if (W.adder.text.trim()) await api("POST", "/api/upstreams/add", { text: W.adder.text, default_scheme: W.adder.scheme });
+        if (st.text.trim()) await api("POST", "/api/upstreams/add", { text: st.text, default_scheme: st.scheme });
         setStep(4);
       } catch (ex) { err.replaceChildren(h("div", { class: "callout bad" }, ex.message)); next.disabled = false; }
     };
@@ -474,10 +497,7 @@
       let job;
       W.run = { state: "running", log: "" };
       draw();
-      try { job = await api("POST", "/api/apply", {}); } catch (e) {
-        if (e.code === "busy" && e.data && e.data.job) job = await api("GET", "/api/jobs/" + e.data.job);
-        else { W.run = { state: "failed", log: e.message }; redraw(); return; }
-      }
+      try { job = await requestApply(); } catch (e) { W.run = { state: "failed", log: e.message }; redraw(); return; }
       const done = await followJob(job, (j) => { if (W.run) { W.run.log = j.log; pre.textContent = j.log; pre.scrollTop = pre.scrollHeight; } });
       if (done.status !== "succeeded") { W.run = { state: "failed", log: done.log }; redraw(); return; }
       W.run = { state: "done", log: done.log };

@@ -60,6 +60,8 @@ MAX_OVPN = 256 * 1024
 BACKUPS_KEPT = 30
 CSRF_HEADER = "X-RPX-Request"
 ROTATION_PROBES = 6  # requests through port 3128 per test
+LOGIN_CONCURRENCY = 2  # password checks running at the same time
+MAX_TRACKED_FAILURES = 10000  # addresses remembered for the login rate limit
 
 DEFAULT_PROBE_URL = "https://api.ipify.org"
 _IP_IN_TEXT = re.compile(r"[0-9A-Fa-f:.]{3,45}")
@@ -164,6 +166,7 @@ class Auth:
         self.lock = threading.Lock()
         self.sessions: Dict[str, float] = {}
         self.failures: Dict[str, Tuple[int, float]] = {}  # ip -> (count, blocked until)
+        self.verify_slots = threading.BoundedSemaphore(LOGIN_CONCURRENCY)
 
     @property
     def auth_file(self) -> Path:
@@ -214,20 +217,32 @@ class Auth:
             return self._new_session()
 
     def login(self, password: str, client_ip: str) -> str:
-        now = time.time()
         with self.lock:
             count, until = self.failures.get(client_ip, (0, 0.0))
-            if until > now:
+            if until > time.time():
                 raise ApiError(HTTPStatus.TOO_MANY_REQUESTS, "rate_limited",
-                               "Too many failed logins. Try again in %d s." % int(until - now + 1))
-            try:
-                record = json.loads(self.auth_file.read_text(encoding="utf-8"))
-            except (FileNotFoundError, ValueError):
-                raise ApiError(HTTPStatus.CONFLICT, "setup_required", "Run the first-time setup first.")
-            if not verify_password(password, record):
+                               "Too many failed logins. Try again in %d s." % int(until - time.time() + 1))
+        try:
+            record = json.loads(self.auth_file.read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError):
+            raise ApiError(HTTPStatus.CONFLICT, "setup_required", "Run the first-time setup first.") from None
+        # PBKDF2 takes a noticeable time: never under self.lock, which every
+        # authenticated request needs, and only a few at once.
+        if not self.verify_slots.acquire(blocking=False):
+            raise ApiError(HTTPStatus.TOO_MANY_REQUESTS, "busy_login", "Too many logins at once. Try again.")
+        try:
+            ok = verify_password(password, record)
+        finally:
+            self.verify_slots.release()
+        with self.lock:
+            if not ok:
+                now = time.time()
+                count, _ = self.failures.get(client_ip, (0, 0.0))
                 count += 1
                 delay = 0 if count < 5 else min(900, 2 ** (count - 4))
                 self.failures[client_ip] = (count, now + delay)
+                if len(self.failures) > MAX_TRACKED_FAILURES:
+                    self.failures = {k: v for k, v in self.failures.items() if v[1] > now - 3600}
                 raise ApiError(HTTPStatus.UNAUTHORIZED, "bad_password", "Wrong password.")
             self.failures.pop(client_ip, None)
             return self._new_session()
@@ -907,10 +922,12 @@ def client_ip_of(handler: "Handler", cfg: Config) -> str:
         except ValueError:
             loopback = False
         if loopback:
-            forwarded = handler.headers.get("CF-Connecting-IP") or ""
-            if not forwarded:
-                xff = handler.headers.get("X-Forwarded-For") or ""
-                forwarded = xff.split(",")[-1].strip() if xff else ""
+            # Only the last X-Forwarded-For entry, which the proxy in front
+            # appended itself (Caddy, nginx and Cloudflare all do). Headers
+            # such as CF-Connecting-IP are passed through unchanged by other
+            # proxies, so a client could set them to dodge the rate limit.
+            xff = handler.headers.get("X-Forwarded-For") or ""
+            forwarded = xff.split(",")[-1].strip()
             if forwarded:
                 peer = forwarded
     try:
@@ -1265,8 +1282,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="where the manager reaches the published proxy ports (default: %(default)s)")
     parser.add_argument("--trust-forwarded", action="store_true",
                         default=os.environ.get("RPX_TRUST_FORWARDED", "") not in ("", "0", "false"),
-                        help="behind a reverse proxy on localhost: take the client IP from "
-                             "CF-Connecting-IP / X-Forwarded-For")
+                        help="behind a reverse proxy on localhost: take the client IP from the last "
+                             "X-Forwarded-For entry")
     parser.add_argument("--public-host", default=os.environ.get("RPX_PUBLIC_HOST", ""),
                         help="host name or IP shown in the connection examples (default: the host of the page)")
     args = parser.parse_args(argv)
